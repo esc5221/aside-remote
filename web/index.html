@@ -223,6 +223,7 @@ a{color:#3b7dd8}
 .asst h1,.asst h2,.asst h3{margin:16px 0 6px;font-weight:600;line-height:1.35}
 .asst h1{font-size:20px}.asst h2{font-size:18px}.asst h3{font-size:16px}
 .asst ul,.asst ol{margin:2px 0 10px;padding-left:24px}
+.asst li > ul,.asst li > ol{margin:3px 0}   /* 중첩 리스트는 아래 여백을 빼서 li 안에 밀착 */
 .asst li{margin:3px 0}
 .asst img{max-width:100%;border-radius:10px;background:var(--surface2);display:block;
           margin:8px 0;cursor:zoom-in}
@@ -534,12 +535,15 @@ const splitRow = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.tri
 
 function md(src) {
   const lines = stripCitations(src).replace(/\r\n/g, '\n').split('\n');
-  let out = '', para = [], list = null, i = 0;
-  let liOpen = false;
+  let out = '', para = [], i = 0;
+  // 리스트는 스택으로 중첩을 관리한다. 평면 상태기계였을 때는 번호 리스트 밑에
+  // 불렛이 끼면 ol 을 닫았다 열어서 번호가 매번 1로 리셋됐다 ("1. 1. 1." 버그).
+  // 중첩 리스트는 부모 <li> "안"에 들어가므로, 안쪽을 닫아도 부모 li 는 열린 채 둔다.
+  const lstack = [];                      // [{t:'ul'|'ol', ind, li:boolean}]
+  const ltop = () => lstack[lstack.length - 1];
+  const closeOne = () => { const s = lstack.pop(); if (s.li) out += '</li>'; out += `</${s.t}>`; };
   const flushP = () => { if (para.length) { out += '<p>' + inline(para.join('\n')) + '</p>'; para = []; } };
-  const closeLi = () => { if (liOpen) { out += '</li>'; liOpen = false; } };
-  const flushL = () => { closeLi(); if (list) { out += `</${list}>`; list = null; } };
-  const openL = t => { if (list !== t) { flushL(); out += `<${t}>`; list = t; } };
+  const flushL = () => { while (lstack.length) closeOne(); };
   while (i < lines.length) {
     const L = lines[i];
     const fence = L.match(/^\s*```\s*([\w+-]*)\s*$/);
@@ -581,11 +585,27 @@ function md(src) {
     if (h) { flushP(); flushL();
       const n = Math.min(h[1].length, 3);
       out += `<h${n}>${inline(h[2])}</h${n}>`; i++; continue; }
-    const b = L.match(/^\s*([-*+]|\d+[.)])\s+(.*)$/);
-    if (b) { flushP(); openL(/\d/.test(b[1]) ? 'ol' : 'ul');
-      closeLi(); out += `<li>${inline(b[2])}`; liOpen = true; i++; continue; }
+    const b = L.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+    if (b) {
+      flushP();
+      const ind = b[1].replace(/\t/g, '  ').length;
+      const t = /\d/.test(b[2]) ? 'ol' : 'ul';
+      while (lstack.length && ind < ltop().ind) closeOne();      // 얕아지면 안쪽부터 닫는다
+      if (!lstack.length || ind > ltop().ind) {                  // 깊어지면 부모 li 안에 중첩
+        const n = t === 'ol' ? parseInt(b[2], 10) : 1;
+        out += n > 1 ? `<ol start="${n}">` : `<${t}>`;           // "3." 부터 시작해도 번호 유지
+        lstack.push({ t, ind, li: false });
+      } else if (ltop().t !== t) {                               // 같은 깊이에서 타입 전환
+        closeOne();
+        out += `<${t}>`; lstack.push({ t, ind, li: false });
+      }
+      const st = ltop();
+      if (st.li) out += '</li>';
+      out += `<li>${inline(b[3])}`; st.li = true;
+      i++; continue;
+    }
     // 들여쓴 이어지는 줄은 직전 항목의 연속이다. 여기서 리스트를 끊으면 번호가 1로 리셋된다.
-    if (liOpen && /^\s{2,}\S/.test(L)) { out += `<br>${inline(L.trim())}`; i++; continue; }
+    if (lstack.length && ltop().li && /^\s{2,}\S/.test(L)) { out += `<br>${inline(L.trim())}`; i++; continue; }
     if (!L.trim()) { flushP(); flushL(); i++; continue; }
     flushL(); para.push(L); i++;
   }
