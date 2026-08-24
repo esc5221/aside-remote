@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aside</title>
+<link rel="icon" href="/icons/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/icons/mark.svg">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Aside">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<script defer src="/vendor/highlight.min.js"></script>
+<script defer src="/vendor/lang-kotlin.min.js"></script>
+<script defer src="/vendor/lang-swift.min.js"></script>
+<script defer src="/vendor/lang-dockerfile.min.js"></script>
+<script defer src="/vendor/lang-nginx.min.js"></script>
+<script defer src="/vendor/lang-dart.min.js"></script>
+<script defer src="/vendor/lang-lua.min.js"></script>
+<script defer src="/vendor/lang-r.min.js"></script>
+<script defer src="/vendor/lang-scala.min.js"></script>
+<style>
+/* 안드로이드 앱과 같은 웜뉴트럴 팔레트. 라이트가 기본, 다크는 시스템 설정을 따른다. */
+:root{
+  /* 라이트 — claude.ai 계열 웜뉴트럴 */
+  --bg:#faf9f7; --surface:#fff; --surface2:#f0eee9; --composer:#fff;
+  --text:#1f1e1d; --dim:#5c594f; --faint:#8b8781;
+  --line:#e6e3dc; --line2:#efece6;
+  --bubble:rgba(0,0,0,.045); --code-bg:#f7f5f1; --code-fg:#26251f; --code-line:#e2dfd7;
+  --sbar:rgba(31,30,29,.17); --sbar-hi:rgba(31,30,29,.32);
+  --code-bar:#efece6; --code-dim:#8b8781;
+  --c-comment:#8b8781; --c-key:#a4432a; --c-str:#4d7a3c; --c-num:#8a6420;
+  --c-fn:#2f6690; --c-type:#8a6420; --c-attr:#7a4a8a; --c-meta:#6f6b64;
+  --accent:#c96442; --accent-dim:#8f4429;
+  --err:#b3261e; --ok:#4fa96a; --warn:#c08a2e;
+  --col:768px;          /* 메시지 컬럼 폭 = claude max-w-3xl */
+  --colpad:16px;        /* px-4 */
+  --composer-col:808px; /* claude max-w-[50.5rem] */
+  --composer-pad:20px;  /* md:px-5 */
+  /* 본문 폰트. 설정에서 교체한다.
+     윈도우엔 쓸 만한 한글 세리프가 없어(한글이 바탕체로 떨어진다) 웹폰트가 유일한 해결책이다. */
+  --font-body:"Gowun Batang", ui-serif, Georgia, "Apple SD Gothic Neo", serif;
+  --font-ui:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+            "Segoe UI", Roboto, sans-serif;
+  /* 네이티브 앱(edge-to-edge)에서 시스템 바 뒤까지 웹뷰가 확장된다 → 실제 여백은 여기서 온다 */
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+  --safe-left:env(safe-area-inset-left,0px);
+  --safe-right:env(safe-area-inset-right,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    /* claude.ai 다크 실측: 배경 rgb(21,21,21) · 컴포저 rgb(32,32,31)
+       · 본문 rgb(240,239,236) · 보조 hsl(55 9% 74%) · 말풍선 rgba(255,255,255,.05) */
+    --bg:#151515; --surface:#1c1c1b; --surface2:#232322; --composer:#20201f;
+    --text:#f0efec; --dim:#c1bfb6; --faint:#8d8a82;
+    --line:#2e2e2c; --line2:#242423;
+    --bubble:rgba(255,255,255,.05); --code-bg:#111110; --code-fg:#e6e4de; --code-line:#2a2a28;
+    --sbar:rgba(240,239,236,.20); --sbar-hi:rgba(240,239,236,.36);
+    --code-bar:#1a1a19; --code-dim:#7f7b73;
+    --c-comment:#6f6b64; --c-key:#e08161; --c-str:#9ec27f; --c-num:#d9b06a;
+    --c-fn:#7fb3d5; --c-type:#d9b06a; --c-attr:#c9a5d8; --c-meta:#a8a49c;
+    --accent:#e08161; --accent-dim:#e08161;
+    --err:#f2b8b5; --ok:#4fa96a; --warn:#e0a03c;
+  }
+  #composerCard{border-color:transparent}
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+/* 키보드가 올라오며 리사이즈될 때 드러나는 창 배경이 흰색으로 번쩍이지 않게 */
+html{background:var(--bg)}
+body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",
+       "Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:#3b7dd8}
+
+/* ---------- 레이아웃: 넓으면 2열, 좁으면 1열 ---------- */
+#app{display:grid;grid-template-columns:340px 1fr;height:100vh;height:100dvh;overflow:hidden}
+#side{border-right:1px solid var(--line2);display:flex;flex-direction:column;min-width:0;min-height:0}
+#main{display:flex;flex-direction:column;min-width:0;min-height:0}
+/* 모바일: 대화가 기본 화면이고 목록은 햄버거로 여는 드로어다.
+   예전엔 "데이터가 있나"로 사이드바/대화를 갈랐는데, 새 대화는 데이터가 없어서
+   눌러도 사이드바로 튕겼다. 화면 전환을 데이터가 아니라 명시적 상태로 바꾼다. */
+#scrim{display:none}
+/* 데스크탑 사이드바 접기 — 내비게이션이 아니라 취향이므로 히스토리가 아닌 localStorage 에 둔다.
+   display:none 만 쓰면 안 된다: 그리드 트랙(340px)이 남아 #main 이 첫 칸으로 들어가
+   340px 폭에 구겨진다. 트랙 자체를 0 으로 접는다 (grid-template-columns 는 애니메이션 가능).
+   접히는 동안 내용이 리플로우로 우그러지지 않게 자식 폭을 340px 로 고정하고 옆으로 잘려나가게 한다. */
+@media (min-width:821px){
+  #app{transition:grid-template-columns .22s cubic-bezier(.32,.72,0,1)}
+  #side{overflow:hidden}
+  #side > *{min-width:340px}
+  body.sbhide #app{grid-template-columns:0px 1fr}
+  body.sbhide #side{border-right:0;visibility:hidden;transition:visibility 0s .25s}
+}
+@media (max-width:820px){
+  #app{grid-template-columns:1fr}
+  #side{position:fixed;top:0;bottom:0;left:0;z-index:40;
+        width:min(86vw,330px);background:var(--bg);border-right:1px solid var(--line2);
+        transform:translateX(-100%);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+  body.drawer #side{transform:none;box-shadow:0 0 44px rgba(0,0,0,.45)}
+  #scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.45);
+         opacity:0;pointer-events:none;transition:opacity .22s}
+  body.drawer #scrim{opacity:1;pointer-events:auto}
+  #menu{display:inline-flex}
+}
+
+/* ---------- 헤더 ---------- */
+.hd{display:flex;align-items:center;gap:10px;min-height:56px;flex:0 0 auto;
+    padding:calc(12px + var(--safe-top)) 14px 12px}
+#side .hd{border-bottom:1px solid var(--line2)}
+.hd h1{margin:0;font-size:20px;line-height:1.2;font-weight:600;font-family:var(--font-body)}
+.hd .sub{font-size:11px;color:var(--faint)}
+.hd .sp{flex:1}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--err);flex:0 0 auto}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+.ico{padding:6px 8px;border-radius:8px;color:var(--dim);font-size:15px}
+.ico:hover{background:var(--surface2)}
+
+/* ---------- 탭바 ---------- */
+.segs{display:flex;gap:4px;padding:8px 12px 4px}
+.seg{padding:6px 12px;border-radius:16px;font-size:13px;color:var(--dim);border:1px solid transparent}
+@media (hover:none){
+  .seg{padding:9px 14px;font-size:14px}
+  .ico{padding:9px 10px}
+  .card{padding:14px}
+  .tabrow{padding:11px}
+  #draft{font-size:16px}   /* iOS 는 16px 미만이면 포커스 시 확대한다 */
+}
+.seg.on{background:var(--surface2);color:var(--text);border-color:var(--line)}
+
+/* ---------- 목록 ---------- */
+.scroll{overflow-y:auto;flex:1;min-height:0}
+
+/* ---------- 스크롤바 ----------
+   macOS 는 트랙패드면 오버레이(자동 숨김)지만 마우스를 꽂는 순간 "항상 표시"로 바뀐다.
+   그 기본 막대가 회색 청크로 튀어나와 카드 목록·컴포저의 둥근 톤과 안 맞는다.
+   쉴 때는 투명, 그 영역에 마우스를 올릴 때만 떠오르게 한다.
+   폭은 늘 예약해 두므로 나타날 때 레이아웃이 밀리지 않는다.
+   반투명 토큰이라 밝은 카드 위에서도, 어두운 코드블록 위에서도 같은 농도로 보인다. */
+*{scrollbar-width:thin;scrollbar-color:transparent transparent}          /* Firefox */
+*:hover{scrollbar-color:var(--sbar) transparent}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:transparent;border:3px solid transparent;
+      background-clip:padding-box;border-radius:8px}
+:hover::-webkit-scrollbar-thumb{background:var(--sbar);background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--sbar-hi);background-clip:padding-box}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+
+/* 터치 기기엔 hover 가 없어 영영 안 뜬다 → 아예 지운다. 관성 스크롤이 위치를 알려준다. */
+@media (hover:none){
+  *{scrollbar-width:none;-ms-overflow-style:none}
+  ::-webkit-scrollbar{width:0;height:0;display:none}
+}
+/* 오른쪽 여백이 1px 인 건 스크롤바가 11px 를 점유하기 때문이다 (합쳐서 왼쪽 12px 와 맞는다).
+   안전영역은 좌우가 서로 바뀌어 있던 걸 바로잡았다 — 노치 폰 가로모드에서 반대편에 붙었다. */
+#list{padding:0 calc(1px + var(--safe-right)) var(--safe-bottom) calc(12px + var(--safe-left));
+      overflow-x:hidden;-webkit-overflow-scrolling:touch}
+/* 터치 기기는 막대 폭이 0 이라 보정이 필요 없다.
+   #list 와 특이도가 같으므로 반드시 이 아래에 와야 이긴다. */
+@media (hover:none){ #list{padding-right:calc(12px + var(--safe-right))} }
+#chatScroll{display:flex;flex-direction:column}
+.card{display:block;width:100%;text-align:left;background:var(--surface);border-radius:12px;
+      padding:12px;margin:6px 0;border:1px solid transparent}
+.card:hover{border-color:var(--line)}
+.card.on{border-color:var(--accent)}
+.card .t{font-weight:600;font-size:14px;display:flex;align-items:center;gap:7px;min-width:0}
+.card .t span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .p{font-size:12px;color:var(--dim);margin-top:4px;overflow-wrap:anywhere;
+         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .m{font-size:11px;color:var(--faint);margin-top:5px;display:flex;gap:10px}
+.unread{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+
+/* 목록: 검색 · 날짜 그룹 · 더보기.
+   1000건을 한 번에 스크롤시키지 않는다 — 30건씩 명시적으로 불러온다.
+   무한스크롤 대신 버튼인 이유: 스크롤 위치가 튀지 않고, 언제 끝났는지 사용자가 안다. */
+.lsearch{position:sticky;top:0;z-index:2;background:var(--bg);padding:8px 0 6px}
+.lsearch input{width:100%;background:var(--surface);border:1px solid var(--line);
+      border-radius:10px;padding:9px 11px;font-size:13px;color:var(--text);outline:none;
+      -webkit-appearance:none}
+.lsearch input:focus{border-color:var(--accent)}
+.grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;
+     padding:14px 4px 2px}
+.grp:first-child{padding-top:4px}
+.more{display:block;width:100%;margin:10px 0 4px;padding:12px;border-radius:10px;
+      background:var(--surface);border:1px solid var(--line);color:var(--dim);font-size:13px}
+.more:hover{border-color:var(--accent);color:var(--text)}
+.more[disabled]{opacity:.5}
+.listend{text-align:center;font-size:11px;color:var(--faint);padding:16px 0 10px}
+@media (hover:none){ .more{padding:14px} }
+
+/* ---------- 대화 ---------- */
+/* 컬럼 폭: claude 는 메시지 max-w-3xl(768) + px-4, 컴포저 max-w-[50.5rem](808) + px-5.
+   두 값이 만나 카드 폭이 정확히 메시지 컬럼과 맞물린다. 그 관계를 그대로 옮겼다. */
+#msgs{width:100%;max-width:var(--col);margin:0 auto;
+      padding:20px calc(var(--colpad) + var(--safe-right)) 0 calc(var(--colpad) + var(--safe-left));
+      display:flex;flex-direction:column;min-width:0;flex:1 0 auto}
+/* 턴 간격: claude 는 user→asst 52px, asst→user 68px. 여긴 툴 블록이 끼어드니 그보다 촘촘하게. */
+#msgs > *{margin-top:7px}
+.turn{display:flex;flex-direction:column;align-items:stretch}
+.turn > * + *{margin-top:7px}
+#msgs > .user{margin-top:34px}
+#msgs > .user + *{margin-top:20px}
+#msgs > :first-child{margin-top:0}
+
+.user{align-self:flex-end;max-width:min(88%,620px);background:var(--bubble);
+      border-radius:12px;padding:12px 16px;font-size:15px;line-height:20px;
+      white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.user.pending{opacity:.5}
+/* 어시스턴트는 말풍선 없음. 본문은 세리프. (claude: anthropic-serif 16px / 1.65) */
+.asst{max-width:100%;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere;
+      font-family:var(--font-body);font-size:16px;line-height:1.65}
+.asst p{margin:0 0 10px}
+.asst p:last-child{margin-bottom:0}
+.asst h1,.asst h2,.asst h3{margin:16px 0 6px;font-weight:600;line-height:1.35}
+.asst h1{font-size:20px}.asst h2{font-size:18px}.asst h3{font-size:16px}
+.asst ul,.asst ol{margin:2px 0 10px;padding-left:24px}
+.asst li{margin:3px 0}
+.asst img{max-width:100%;border-radius:10px;background:var(--surface2);display:block;
+          margin:8px 0;cursor:zoom-in}
+.asst code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
+           background:var(--surface2);padding:1px 5px;border-radius:5px}
+.asst hr{border:0;border-top:1px solid var(--line2);margin:14px 0}
+.asst blockquote{margin:8px 0;padding:2px 0 2px 14px;border-left:2px solid var(--line);
+                 color:var(--dim)}
+.asst blockquote p:last-child{margin-bottom:0}
+.asst table{border-collapse:collapse;margin:8px 0;font-size:14px;display:block;
+            overflow-x:auto;max-width:100%;font-family:inherit}
+.asst th,.asst td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.asst th{background:var(--surface2);font-weight:600;white-space:nowrap}
+
+/* 코드블록: 절대배치 라벨 대신 헤더바를 따로 둔다 (본문과 겹치지 않게) */
+.codewrap{margin:10px 0;border:1px solid var(--code-line);border-radius:10px;overflow:hidden;
+          background:var(--code-bg)}
+.codebar{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 13px;
+         background:var(--code-bar);border-bottom:1px solid var(--code-line);
+         font-family:var(--font-ui)}
+.codebar .lang{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+               color:var(--code-dim);flex:1;font-weight:600}
+.codebar .cp{font-size:10.5px;color:var(--code-dim);padding:3px 8px;border-radius:6px;
+             border:1px solid transparent}
+.codebar .cp:hover{background:var(--code-line);color:var(--code-fg)}
+pre.code{margin:0;padding:13px;overflow-x:auto;background:none}
+pre.code code{background:none;padding:0;color:var(--code-fg);
+              font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+              font-size:13px;line-height:1.62;tab-size:2}
+
+/* hljs 테마 — 앱 팔레트에 맞춰 직접 짠 것 (배포판 테마를 쓰면 톤이 튄다) */
+.hljs-comment,.hljs-quote{color:var(--c-comment);font-style:italic}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-section,.hljs-doctag,
+.hljs-name,.hljs-strong{color:var(--c-key)}
+.hljs-string,.hljs-regexp,.hljs-addition,.hljs-attribute,.hljs-meta .hljs-string{color:var(--c-str)}
+.hljs-number,.hljs-symbol,.hljs-bullet,.hljs-link{color:var(--c-num)}
+.hljs-title,.hljs-title.function_,.hljs-built_in.function_{color:var(--c-fn)}
+.hljs-built_in,.hljs-type,.hljs-class .hljs-title,.hljs-title.class_{color:var(--c-type)}
+.hljs-attr,.hljs-variable,.hljs-template-variable,.hljs-property,
+.hljs-selector-attr,.hljs-selector-pseudo{color:var(--c-attr)}
+.hljs-meta,.hljs-comment .hljs-doctag,.hljs-params{color:var(--c-meta)}
+.hljs-deletion{color:var(--err)}
+.hljs-emphasis{font-style:italic}
+
+/* 사고 / 툴 — 본문 세리프와 구분되게 산세리프, 작게 */
+details.think,details.tool,details.res{font-family:inherit}
+details.think,details.tool,details.res{font-size:13px}
+details summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
+                font-size:12.5px;padding:3px 2px;
+                font-family:var(--font-ui)}
+details summary::-webkit-details-marker{display:none}
+details summary:before{content:"›";display:inline-block;transition:transform .12s;color:inherit}
+details[open] summary:before{transform:rotate(90deg)}
+details.think summary{color:var(--faint);font-style:italic}
+details.think .body{color:var(--faint);font-size:12.5px;padding:2px 0 4px 18px;white-space:pre-wrap;
+                    font-family:var(--font-ui)}
+details.tool summary{color:var(--dim)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);
+      border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:500}
+.chip .g{color:var(--accent-dim)}
+details.tool .body code,details.res .body code{background:none;padding:0;color:inherit;font-size:inherit}
+details.tool .body,details.res .body{background:var(--code-bg);color:var(--code-fg);
+      border:1px solid var(--code-line);border-radius:8px;
+      padding:10px 12px;margin:5px 0;overflow:auto;max-height:340px;
+      font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;
+      word-break:break-word}
+details.res summary{color:var(--dim)}
+details.res.err summary{color:var(--err)}
+details.res .body{background:var(--surface2);color:var(--dim);border-color:var(--line2)}
+.meta{font-size:11px;color:var(--faint);display:flex;gap:9px;flex-wrap:wrap;min-width:0;
+      overflow-wrap:anywhere;
+      font-family:var(--font-ui)}
+.sys{font-size:11.5px;color:var(--faint);overflow-wrap:anywhere;
+     font-family:var(--font-ui)}
+
+/* ---------- 입력 (seamless) ---------- */
+/* 스크롤 컨테이너 안에서 sticky. 배경·보더·그림자 없음 —
+   메시지가 카드 옆·아래로 그대로 지나가고, 구분선이라는 게 존재하지 않는다. */
+/* 완전 투명하게 두면 스크롤한 본문이 카드 위아래로 비친다.
+   하드 라인 대신 위쪽 32px 을 배경색으로 페이드아웃 → 경계 없이 자연스럽게 사라진다. */
+#composerBar{position:sticky;bottom:0;z-index:5;padding-top:32px;margin-top:8px;
+             pointer-events:none;
+             background:linear-gradient(to bottom,
+               rgba(0,0,0,0) 0, var(--bg) 30px, var(--bg) 100%)}
+#composer{width:100%;max-width:var(--composer-col);margin:0 auto;pointer-events:auto;
+          padding:0 calc(var(--composer-pad) + var(--safe-left)) calc(16px + var(--safe-bottom))
+                    calc(var(--composer-pad) + var(--safe-right))}
+#composerCard{display:flex;flex-direction:column;gap:6px;background:var(--composer);
+              border:1px solid var(--line);border-radius:28px;padding:10px 10px 10px 10px;
+              box-shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -12px rgba(0,0,0,.28);
+              transition:border-color .15s}
+#composerCard:focus-within{border-color:var(--line)}
+/* 버튼과 같은 높이(36px)를 갖고, 한 줄일 때 글자가 세로 중앙에 오도록 (36-22)/2=7px */
+.crow{display:flex;gap:8px;align-items:flex-end}
+#draft{flex:1;resize:none;background:none;border:0;outline:none;
+       padding:7px 0;max-height:180px;min-height:36px;
+       font-size:15px;line-height:22px;color:var(--text)}
+/* ＋ 도 전송 버튼과 같은 36px 원 — 좌우 대칭이 맞아야 통일감이 산다 */
+#attach{width:36px;height:36px;border-radius:18px;flex:0 0 auto;
+        display:grid;place-items:center;font-size:19px;line-height:1;
+        color:var(--dim);background:var(--surface2);transition:color .15s,background .15s}
+#attach:hover{color:var(--text)}
+#attachRow{display:flex;gap:8px;flex-wrap:wrap;padding:2px 2px 0 44px}
+#attachRow:empty{display:none}
+.att{position:relative;width:60px;height:60px;border-radius:10px;overflow:hidden;
+     background:var(--surface2);border:1px solid var(--line)}
+.att img{width:100%;height:100%;object-fit:cover;display:block}
+.att .x{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:9px;
+        background:rgba(0,0,0,.62);color:#fff;font-size:11px;line-height:18px;text-align:center}
+.att.up{opacity:.45}
+/* 유저 말풍선에 붙는 첨부 썸네일 */
+.user .atts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+.user .atts img{width:96px;height:96px;object-fit:cover;border-radius:9px;cursor:zoom-in;display:block}
+#draft::placeholder{color:var(--faint)}
+#send{width:36px;height:36px;border-radius:18px;background:var(--accent);color:#fff;
+      display:grid;place-items:center;font-size:14px;flex:0 0 auto;transition:opacity .15s}
+#send:hover{opacity:.88}
+#send.stop{background:var(--surface2);color:var(--dim)}
+
+.working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:13px;
+         font-family:var(--font-ui)}
+
+/* ---------- 탭 ---------- */
+.tabrow{display:flex;gap:11px;align-items:center;background:var(--surface);border-radius:11px;
+        padding:9px;margin:6px 0;width:100%;text-align:left;border:1px solid transparent}
+.tabrow:hover{border-color:var(--line)}
+.thumb{width:88px;height:56px;border-radius:7px;background:var(--surface2);object-fit:cover;flex:0 0 auto}
+.fav{width:88px;height:56px;border-radius:7px;background:var(--surface2);display:grid;place-items:center;flex:0 0 auto}
+.fav img{width:18px;height:18px}
+.tabrow .t{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tabrow .h{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0}
+.tabrow .h span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tabrow .h i{width:5px;height:5px;border-radius:50%;background:#9a968e;flex:0 0 auto}
+.tabrow .h i.live{background:var(--ok)}
+.searchbar{display:flex;gap:8px;padding:6px 0}
+.searchbar input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+                 padding:8px 14px;outline:none}
+
+/* ---------- 시트 / 모달 ---------- */
+.mask{position:fixed;inset:0;background:#0008;display:grid;place-items:center;padding:20px;z-index:50}
+.sheet{background:var(--surface);border-radius:16px;padding:18px;max-width:700px;width:100%;
+       max-height:88vh;overflow:auto}
+.sheet h3{margin:0 0 4px;font-size:16px}
+.sheet .url{font-size:11px;color:var(--faint);word-break:break-all;margin-bottom:10px}
+.sheet img.shot{width:100%;border-radius:10px;background:var(--surface2);margin-bottom:10px}
+.sheet textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
+                padding:10px;min-height:70px;resize:vertical;outline:none}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--line);border-radius:18px;padding:7px 14px;font-size:13px;color:var(--dim)}
+.btn:hover{background:var(--surface2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.zoom{position:fixed;inset:0;background:#000d;display:grid;place-items:center;z-index:60;cursor:zoom-out}
+.zoom img{max-width:96vw;max-height:96vh}
+
+/* ---------- 설정 / 기타 ---------- */
+.pad{padding:16px 2px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:11px;color:var(--faint);margin-bottom:4px}
+.field input{width:100%;background:var(--surface);border:1px solid var(--line);
+             border-radius:10px;padding:9px 12px;outline:none}
+.empty{padding:40px 24px;text-align:center;color:var(--faint);font-size:13px}
+.fontgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.fontbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+         padding:10px 12px;border-radius:10px;font-size:15px;color:var(--text);text-align:left}
+.fontbtn.on{border-color:var(--accent);color:var(--accent)}
+.fontbtn .fk{font-family:var(--font-ui);font-size:10px;color:var(--faint);font-weight:500}
+.hint{font-size:11px;color:var(--faint);line-height:1.5;margin-top:7px;font-family:var(--font-ui)}
+.err{color:var(--err);font-size:12.5px;width:100%;max-width:var(--col);
+     margin:0 auto;padding:4px var(--colpad)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
+      border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:12px}
+</style>
+</head>
+<body>
+<div id="scrim"></div>
+<div id="app">
+  <aside id="side">
+    <div class="hd">
+      <h1 id="sideTitle">대화</h1>
+      <div class="sp"></div>
+      <div class="dot" id="dot" title="연결 상태"></div>
+      <button class="ico" id="refresh" title="새로고침">⟳</button>
+    </div>
+    <div class="segs">
+      <button class="seg on" data-view="chats">대화</button>
+      <button class="seg" data-view="tabs">탭</button>
+      <button class="seg" data-view="settings">설정</button>
+    </div>
+    <div class="scroll" id="list"></div>
+  </aside>
+
+  <section id="main">
+    <div class="hd">
+      <button class="ico" id="menu" title="목록">☰</button>
+      <div style="min-width:0;flex:1">
+        <div id="chatTitle" style="font-weight:600;font-size:15px;overflow:hidden;
+             text-overflow:ellipsis;white-space:nowrap">새 대화</div>
+      </div>
+      <div class="sp"></div>
+      <button class="ico" id="newChat" title="새 대화">+</button>
+    </div>
+    <div class="scroll" id="chatScroll">
+      <div id="msgs"></div>
+      <div class="err" id="chatErr"></div>
+      <!-- 컴포저는 스크롤 컨테이너 "안"에 sticky 로 둔다.
+           배경도 보더도 없어서 메시지가 그 아래로 그대로 지나간다 = 구분선이 없다. (claude.ai 방식) -->
+      <div id="composerBar">
+        <div id="composer">
+          <div id="composerCard">
+            <div id="attachRow"></div>
+            <div class="crow">
+              <button id="attach" title="이미지 첨부">＋</button>
+              <textarea id="draft" rows="1" placeholder="무엇을 시킬까요"
+                        enterkeyhint="send"></textarea>
+              <button id="send" title="보내기"></button>
+            </div>
+            <input id="filePick" type="file" accept="image/*" multiple hidden>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+// ─────────────────────────────────────────────── 상태
+const S = {
+  token: localStorage.getItem('token') || '',
+  view: 'chats',
+  sessions: [], tabs: [], msgs: [],
+  sessionId: null, running: false, pending: null,
+  nextSeq: 0, offset: 0,
+  health: null, wsOpen: false, err: null, listErr: null,
+  q: '', liveOnly: false, openActs: new Set(),
+  sq: '', loadedQ: null, cursor: null, total: 0, matched: 0, loadingMore: false,
+  font: localStorage.getItem('font') || 'gowun-batang', fonts: [],
+  atts: [],
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// <img src> 와 WebSocket 업그레이드는 헤더를 못 붙인다. 쿼리스트링에 토큰을 실으면
+// 접근로그·리퍼러에 남으므로, 브리지가 /api/web-token 에서 심어준 HttpOnly 쿠키를 쓴다.
+const withTok = u => u;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json',
+               ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}),
+               ...(opts.headers || {}) },
+  });
+  if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status, body: await r.text() });
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r.text();
+}
+
+// ─────────────────────────────────────────────── 폰트
+// 본문 폰트는 브리지가 프록시한다 → 브라우저는 fonts.googleapis.com 을 직접 때리지 않고,
+// 한 번 받은 조각은 브리지 캐시에 남아 다음엔 오프라인에서도 뜬다.
+function applyFont(id) {
+  const meta = S.fonts.find(f => f.id === id);
+  if (meta?.stack) document.documentElement.style.setProperty('--font-body', meta.stack);
+  let link = document.getElementById('fontcss');
+  if (meta?.webfont) {
+    if (!link) { link = document.createElement('link'); link.id = 'fontcss'; link.rel = 'stylesheet';
+                 document.head.appendChild(link); }
+    const href = '/api/font/css/' + id;
+    if (!link.href.endsWith(href)) link.href = href;
+  } else if (link) link.remove();
+}
+
+// 설정 화면에서만: 미리보기가 실제 폰트로 보이게 전 패밀리 CSS 를 한 번 로드한다.
+// CSS 자체는 unicode-range 목록이라 실제 woff2 는 버튼 라벨에 쓰인 글자 범위만 내려온다.
+let previewsLoaded = false;
+function ensureFontPreviews() {
+  if (previewsLoaded || !S.fonts.length) return;
+  previewsLoaded = true;
+  S.fonts.filter(f => f.webfont).forEach(f => {
+    const id = 'fontprev-' + f.id;
+    if (document.getElementById(id)) return;
+    const l = document.createElement('link');
+    l.id = id; l.rel = 'stylesheet'; l.href = '/api/font/css/' + f.id;
+    document.head.appendChild(l);
+  });
+}
+
+async function loadFonts() {
+  try {
+    S.fonts = (await (await fetch('/api/font/list')).json()).fonts || [];
+    applyFont(S.font);
+  } catch {}
+}
+
+// ─────────────────────────────────────────────── 마크다운
+// 안드로이드 앱의 Markdown.kt 와 같은 범위: 문단·헤딩·리스트·코드·강조·링크·이미지.
+// Aside 는 근거를 <citation refs="…">인용문</citation> 로 감싸서 뱉는다. 태그는 버리고 인용문만 남긴다.
+const stripCitations = t => String(t)
+  .replace(/<citation\b[^>]*>([\s\S]*?)<\/citation>/g, '$1')
+  .replace(/<\/?citation\b[^>]*>/g, '')
+  .replace(/<webfetch-citation\b[^>]*\/?>/g, '');
+
+const isTableSep = l => /^\s*\|?[\s:-]*-{2,}[\s:|-]*\|?\s*$/.test(l) && l.includes('-');
+const splitRow = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+
+function md(src) {
+  const lines = stripCitations(src).replace(/\r\n/g, '\n').split('\n');
+  let out = '', para = [], list = null, i = 0;
+  let liOpen = false;
+  const flushP = () => { if (para.length) { out += '<p>' + inline(para.join('\n')) + '</p>'; para = []; } };
+  const closeLi = () => { if (liOpen) { out += '</li>'; liOpen = false; } };
+  const flushL = () => { closeLi(); if (list) { out += `</${list}>`; list = null; } };
+  const openL = t => { if (list !== t) { flushL(); out += `<${t}>`; list = t; } };
+  while (i < lines.length) {
+    const L = lines[i];
+    const fence = L.match(/^\s*```\s*([\w+-]*)\s*$/);
+    if (fence) {
+      flushP(); flushL();
+      const lang = fence[1] || '', buf = [];
+      i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out += codeBlock(lang, buf.join('\n'));
+      continue;
+    }
+    const img = L.trim().match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+    if (img) { flushP(); flushL();
+      out += `<img src="${esc(withTok(img[2]))}" alt="${esc(img[1])}" loading="lazy">`;
+      if (img[1]) out += `<div class="meta">${esc(img[1])}</div>`;
+      i++; continue; }
+    // 마크다운 표: 헤더행 + 구분행 + 본문행
+    if (L.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]) && L.trim().includes('|')) {
+      flushP(); flushL();
+      const head = splitRow(L); i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(splitRow(lines[i++]));
+      out += '<table><thead><tr>' + head.map(c => `<th>${inline(c)}</th>`).join('') +
+             '</tr></thead><tbody>' +
+             rows.map(r => '<tr>' + r.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
+             '</tbody></table>';
+      continue;
+    }
+    if (/^\s*>\s?/.test(L)) {
+      flushP(); flushL();
+      const buf = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      out += '<blockquote>' + md(buf.join('\n')) + '</blockquote>';
+      continue;
+    }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(L)) { flushP(); flushL(); out += '<hr>'; i++; continue; }
+    const h = L.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { flushP(); flushL();
+      const n = Math.min(h[1].length, 3);
+      out += `<h${n}>${inline(h[2])}</h${n}>`; i++; continue; }
+    const b = L.match(/^\s*([-*+]|\d+[.)])\s+(.*)$/);
+    if (b) { flushP(); openL(/\d/.test(b[1]) ? 'ol' : 'ul');
+      closeLi(); out += `<li>${inline(b[2])}`; liOpen = true; i++; continue; }
+    // 들여쓴 이어지는 줄은 직전 항목의 연속이다. 여기서 리스트를 끊으면 번호가 1로 리셋된다.
+    if (liOpen && /^\s{2,}\S/.test(L)) { out += `<br>${inline(L.trim())}`; i++; continue; }
+    if (!L.trim()) { flushP(); flushL(); i++; continue; }
+    flushL(); para.push(L); i++;
+  }
+  flushP(); flushL();
+  return out;
+}
+
+function inline(t) {
+  let s = esc(t);
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,
+    (_, a, u) => `<img src="${esc(withTok(u))}" alt="${esc(a)}" loading="lazy">`);
+  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g,
+    (_, a, u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${a || esc(u)}</a>`);
+  s = s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  return s;
+}
+
+// hljs 가 아는 언어일 때만 language- 클래스를 붙인다. 모르는 값이면 경고만 찍고 무시되기 때문.
+function hlLang(lang) {
+  if (!lang) return '';
+  const l = String(lang).toLowerCase();
+  return (window.hljs && hljs.getLanguage(l)) ? l : '';
+}
+
+function codeBlock(lang, body) {
+  const l = hlLang(lang);
+  return `<div class="codewrap"><div class="codebar">` +
+    `<span class="lang">${esc(lang || 'text')}</span><button class="cp">복사</button></div>` +
+    `<pre class="code"><code${l ? ` class="language-${esc(l)}"` : ''}>${esc(body)}</code></pre></div>`;
+}
+
+// 툴 인자 본문도 언어를 알면 하이라이트한다 (repl=JS, bash=shell).
+const TOOL_LANG = { repl: 'javascript', bash: 'bash' };
+
+let hljsReady = false;
+function highlightNew(root) {
+  if (!hljsReady || !window.hljs) return;
+  root.querySelectorAll('code[class*="language-"]:not([data-hl])').forEach(el => {
+    el.dataset.hl = '1';
+    try { hljs.highlightElement(el); } catch {}
+  });
+}
+window.addEventListener('DOMContentLoaded', () => {
+  if (window.hljs) {
+    hljs.configure({ ignoreUnescapedHTML: true, cssSelector: 'code[class*=language-]' });
+    hljsReady = true;
+    highlightNew(document);
+  }
+});
+
+const GLYPH = { repl:'◐', bash:'▸', websearch:'⌕', webfetch:'⤓', read_file:'▤',
+  write_file:'✎', edit_file:'✎', write_todos:'☑', subagent:'⑃', subagent_wait:'⑃',
+  memory_search:'◈', browsing_history_search:'◷', ask_user_question:'?' };
+
+// ─────────────────────────────────────────────── 렌더
+// ─────────────────────────────────────────────── 라우터
+// 성격이 다른 두 가지를 분리한다.
+//   A. 주소로 표현할 상태  — view · sessionId · 검색어. 공유·북마크·새로고침이 의미 있다.
+//   B. 뒤로가기로 닫을 레이어 — 드로어 · 이미지 확대 · 탭 시트. 주소에 남으면 안 된다.
+// 둘 다 history 엔트리를 만들되, B 는 URL 을 바꾸지 않는다(pushState 에 현재 URL 재사용).
+// 이 구분 하나로 백버튼 사다리가 통째로 사라진다.
+//
+// 규율: applyState 는 절대 navigate 를 부르지 않는다. 그래야 루프가 안 생긴다.
+//   navigate/pushLayer  → 히스토리를 밀고 applyState 호출
+//   popstate            → applyState 만 호출
+
+const VIEWS = ['chats', 'tabs', 'settings'];
+
+function parseUrl(loc = location) {
+  const path = loc.pathname.replace(/\/+$/, '') || '/';
+  const sp = new URLSearchParams(loc.search);
+  const st = { view: 'chats', sessionId: null, q: sp.get('q') || '', live: sp.get('live') === '1' };
+  if (path === '/tabs') st.view = 'tabs';
+  else if (path === '/settings') st.view = 'settings';
+  else { const m = path.match(/^\/c\/([A-Za-z0-9_-]{1,64})$/); if (m) st.sessionId = m[1]; }
+  return st;
+}
+
+function urlOf(st) {
+  const path = st.view === 'tabs' ? '/tabs'
+             : st.view === 'settings' ? '/settings'
+             : st.sessionId ? '/c/' + st.sessionId : '/';
+  const sp = new URLSearchParams();
+  if (st.q) sp.set('q', st.q);
+  if (st.view === 'tabs' && st.live) sp.set('live', '1');
+  const qs = sp.toString();
+  return path + (qs ? '?' + qs : '');
+}
+
+// 레이어(layer)는 일부러 빼둔다 — 주소로 표현하지 않는 상태다.
+const curState = () => ({
+  view: S.view, sessionId: S.sessionId,
+  q: S.view === 'tabs' ? S.q : S.sq, live: S.liveOnly,
+});
+
+// 떠나기 직전 현재 엔트리에 스크롤 위치를 박는다.
+// 이게 없으면 back 이 "돌아온" 게 아니라 "다시 연" 느낌이 난다.
+function stampScroll() {
+  const box = $('#chatScroll');
+  const base = history.state || curState();
+  history.replaceState({ ...base, scroll: box ? box.scrollTop : 0 }, '', location.href);
+}
+
+function navigate(patch, { replace = false } = {}) {
+  stampScroll();
+  const st = { ...curState(), ...patch };
+  history[replace ? 'replaceState' : 'pushState'](st, '', urlOf(st));
+  applyState(st);
+}
+
+// URL 을 바꾸지 않는 히스토리 엔트리. 뒤로가기로 닫히는 레이어용.
+function pushLayer(layer) {
+  stampScroll();
+  const st = { ...curState(), layer };
+  history.pushState(st, '', location.href);
+  applyState(st);
+}
+// 레이어는 반드시 back 으로 닫는다. element.remove() 로 닫으면 유령 엔트리가 남아
+// 다음 back 이 한 번 헛돈다 — 이런 구조에서 제일 흔한 실수다.
+const closeLayer = () => history.back();
+
+function applyState(st) {
+  // 목표 상태에 없는 레이어는 전부 닫는다
+  if (st.layer !== 'zoom') document.querySelector('.zoom')?.remove();
+  if (st.layer !== 'sheet') document.querySelector('.mask')?.remove();
+  document.body.classList.toggle('drawer', st.layer === 'drawer');
+
+  const view = VIEWS.includes(st.view) ? st.view : 'chats';
+  const viewChanged = S.view !== view;
+  S.view = view;
+
+  if (view === 'tabs') { S.q = st.q || ''; S.liveOnly = !!st.live; }
+  else {
+    S.sq = st.q || '';
+    // loadedQ 가 null 인 최초 1회 + 검색어가 바뀔 때만. (!sessions.length 를 조건에 넣으면
+    // 대화가 0건인 사용자는 화면을 옮길 때마다 재조회한다)
+    if (S.loadedQ !== S.sq) { S.loadedQ = S.sq; loadSessions('reset'); }
+  }
+
+  if ((st.sessionId || null) !== S.sessionId) {
+    if (st.sessionId) openSession(st.sessionId); else clearSession();
+  }
+  if (viewChanged && view === 'tabs' && !S.tabs.length) loadTabs();
+
+  lastKey = ''; render();
+  if (typeof st.scroll === 'number') requestAnimationFrame(() => {
+    const box = $('#chatScroll'); if (box) box.scrollTop = st.scroll;
+  });
+}
+
+addEventListener('popstate', e => applyState(e.state || parseUrl()));
+
+function render() {
+  $('#dot').className = 'dot ' + (!S.wsOpen ? '' : (S.health && !S.health.asideApp ? 'warn' : 'ok'));
+  $('#sideTitle').textContent = S.view === 'tabs' ? '탭' : S.view === 'settings' ? '설정' : '대화';
+  document.querySelectorAll('.seg').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
+  ({ chats: renderSessions, tabs: renderTabs, settings: renderSettings })[S.view]();
+  renderChat();
+}
+
+let lastKey = '';
+
+const DAY = 86400e3;
+function grpOf(ms) {
+  const now = new Date();
+  const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const d = new Date(ms);
+  if (ms >= sod) return '오늘';
+  if (ms >= sod - DAY) return '어제';
+  if (ms >= sod - 6 * DAY) return '지난 7일';
+  if (ms >= sod - 29 * DAY) return '지난 30일';
+  return d.getFullYear() === now.getFullYear()
+    ? `${d.getMonth() + 1}월` : `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+}
+
+function renderSessions() {
+  const el = $('#list');
+  // innerHTML 을 매번 갈아끼우면 그리는 도중 들어온 클릭이 씹힌다. 바뀔 때만 다시 그린다.
+  const key = 'S' + S.token.slice(0, 4) + S.sessionId + S.sq + S.cursor + S.loadingMore +
+    S.total + S.matched + S.sessions.map(x => x.id + x.updatedAt + x.unread + x.title).join('|') +
+    (S.listErr || '');
+  if (key === lastKey) return;
+  lastKey = key;
+  if (!S.token) return el.innerHTML = `<div class="empty">설정에서 토큰을 넣어주세요</div>`;
+
+  // 검색창은 항상 둔다. 없으면 "목록이 30개뿐"으로 보이고, 있으면 전 구간을 찌를 수 있다.
+  const search = `<div class="lsearch"><input id="sq" placeholder="전체 대화 검색"
+        value="${esc(S.sq)}" enterkeyhint="search" autocomplete="off"></div>`;
+
+  let body;
+  if (!S.sessions.length) {
+    body = `<div class="empty">${S.listErr ? esc(S.listErr)
+      : (S.sq ? `"${esc(S.sq)}" 결과가 없습니다` : '대화가 없습니다')}</div>`;
+  } else {
+    let last = '';
+    body = S.sessions.map(x => {
+      const g = grpOf((x.mtime || 0) * 1000 || Date.parse(x.updatedAt) || Date.now());
+      const head = g === last ? '' : `<div class="grp">${esc(g)}</div>`;
+      last = g;
+      return head + `
+    <button class="card ${x.id === S.sessionId ? 'on' : ''}" data-id="${esc(x.id)}">
+      <div class="t">${x.unread ? '<i class="unread"></i>' : ''}
+        <span class="txt">${esc(x.title)}</span></div>
+      ${x.preview ? `<div class="p">${esc(x.preview.replace(/\n/g, ' '))}</div>` : ''}
+      <div class="m">${x.cost ? '$' + x.cost.toFixed(4) : ''}
+        ${x.tokens ? Math.round(x.tokens / 1000) + 'k tok' : ''}</div>
+    </button>`;
+    }).join('');
+  }
+
+  // 남은 개수를 버튼에 적는다 — 몇 번을 더 눌러야 하는지 모르면 누르기가 망설여진다.
+  const rest = Math.max(0, (S.matched || 0) - S.sessions.length);
+  const foot = S.cursor
+    ? `<button class="more" id="more" ${S.loadingMore ? 'disabled' : ''}>${
+        S.loadingMore ? '불러오는 중…' : `더보기 · 남은 ${rest}개`}</button>`
+    : (S.sessions.length
+        ? `<div class="listend">${S.sq
+            ? `검색 결과 ${S.matched}개 (전체 ${S.total}개 중)`
+            : `전체 ${S.total}개`}</div>`
+        : '');
+
+  el.innerHTML = search + body + foot;
+  restoreSearchFocus();
+}
+
+// 입력할 때마다 목록이 다시 그려지므로 포커스·캐럿을 되돌려준다.
+let sqCaret = null;
+function restoreSearchFocus() {
+  if (sqCaret === null) return;
+  const i = $('#sq'); if (!i) return;
+  i.focus(); try { i.setSelectionRange(sqCaret, sqCaret); } catch {}
+}
+
+function renderTabs() {
+  const el = $('#list');
+  const key = 'T' + S.q + S.liveOnly + S.tabs.map(t => t.targetId + t.loaded + (t.lastAccessed || 0)).join('|');
+  if (key === lastKey) return;
+  lastKey = key;
+  const live = S.tabs.filter(t => t.loaded).length;
+  // 최근 사용(마지막 활성) 순. 크롬이 주는 시간 정보는 lastAccessed 뿐이다 —
+  // 생성/편집 시각은 확장 API 에 없다. 없는 탭(중복 URL 미매칭)은 뒤로.
+  const f = S.tabs.filter(t => (!S.liveOnly || t.loaded) &&
+    (!S.q || (t.title || '').toLowerCase().includes(S.q) || (t.url || '').toLowerCase().includes(S.q)))
+    .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+  el.innerHTML = `
+    <div class="searchbar">
+      <input id="q" placeholder="제목·URL 검색" value="${esc(S.q)}">
+      <button class="btn" id="lo">${S.liveOnly ? '살아있음' : '전체'}</button>
+    </div>
+    <div class="meta" style="padding:0 2px 6px">${S.tabs.length}개 · 살아있음 ${live}</div>
+    ` + f.map(t => `
+    <button class="tabrow" data-id="${esc(t.targetId)}">
+      ${t.loaded
+        ? `<img class="thumb" data-src="/api/tabs/${esc(t.targetId)}/shot"
+             data-fav="${esc(t.favicon || '')}">`
+        : `<div class="fav">${t.favicon ? `<img src="${esc(t.favicon)}">` : '◻'}</div>`}
+      <div style="min-width:0;flex:1">
+        <div class="t">${esc(t.title || t.url || '')}</div>
+        <div class="h"><i class="${t.loaded ? 'live' : ''}"></i><span>${esc(host(t.url))}${
+          t.active ? ' · 활성' : (t.loaded ? '' : ' · 잠듦')}${
+          t.lastAccessed ? ' · ' + ago(t.lastAccessed) : ''}</span></div>
+      </div>
+    </button>`).join('');
+  const q = $('#q');
+  if (q) q.oninput = e => { S.q = e.target.value.toLowerCase(); renderTabs(); $('#q')?.focus(); };
+  const lo = $('#lo');
+  if (lo) lo.onclick = () => { S.liveOnly = !S.liveOnly; renderTabs(); };
+  observeThumbs();
+}
+
+const host = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch { return ''; } };
+const ago = ms => {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return '방금';
+  if (s < 3600) return Math.floor(s / 60) + '분 전';
+  if (s < 86400) return Math.floor(s / 3600) + '시간 전';
+  return Math.floor(s / 86400) + '일 전';
+};
+
+function renderSettings() {
+  lastKey = '';
+  ensureFontPreviews();
+  const h = S.health;
+  $('#list').innerHTML = `<div class="pad">
+    <div class="field"><label>브리지 Bearer 토큰</label>
+      <input id="tok" type="password" value="${esc(S.token)}" placeholder="~/.aside-remote/token"></div>
+    <div class="field" style="margin-top:6px"><label>본문 폰트</label>
+      <div class="fontgrid">${S.fonts.map(f => `
+        <button class="btn fontbtn ${f.id === S.font ? 'on' : ''}" data-font="${esc(f.id)}"
+                style="font-family:${f.stack.replace(/"/g,'&quot;')}">
+          ${esc(f.label)}<span class="fk">${f.webfont ? '웹폰트' : '시스템'}</span>
+        </button>`).join('')}</div>
+      <div class="hint">윈도우에는 쓸 만한 한글 세리프가 없어 시스템 세리프는 바탕체로 떨어집니다.
+        웹폰트를 고르면 어느 기기에서나 같게 보입니다.</div>
+    </div>
+    <div class="acts"><button class="btn pri" id="saveTok">저장</button>
+      <button class="btn" id="autoTok">Access 로 자동 인증</button>
+      <button class="btn" id="wake">Aside 깨우기</button></div>
+    <div class="meta" style="display:block;margin-top:16px;line-height:1.8">
+      연결: ${S.wsOpen ? 'WS open' : '끊김'}<br>
+      Aside.app: ${h?.asideApp ? '실행 중' : '꺼짐'}<br>
+      mcp: ${h?.mcp?.alive ? 'alive' : '-'} (재시작 ${h?.mcp?.restarts ?? 0})<br>
+      실행 중 세션: ${h?.runningSessions?.length ?? 0}
+    </div>
+    <div class="meta" style="display:block;margin-top:14px;color:var(--faint)">
+      Cloudflare Access 는 이 브라우저의 구글 로그인으로 이미 통과했습니다.
+      여기 토큰은 브리지 자체 인증(2중 방어선)이며, 첫 방문 때 Access 서명 검증을 거쳐
+      자동으로 받아옵니다. 손으로 칠 일은 없습니다.
+    </div></div>`;
+  $('#list').querySelectorAll('.fontbtn').forEach(b => b.onclick = () => {
+    S.font = b.dataset.font;
+    localStorage.setItem('font', S.font);
+    applyFont(S.font);
+    lastKey = ''; renderSettings();
+  });
+  $('#saveTok').onclick = () => {
+    S.token = $('#tok').value.trim();
+    localStorage.setItem('token', S.token);
+    connect(); refreshAll();
+  };
+  $('#autoTok').onclick = async () => {
+    try {
+      const r = await fetch('/api/web-token');
+      if (!r.ok) throw new Error(await r.text());
+      S.token = (await r.json()).token;
+      localStorage.setItem('token', S.token);
+      connect(); refreshAll();
+    } catch (e) { S.err = 'Access 자동 인증 실패: ' + e.message; render(); }
+  };
+  $('#wake').onclick = () => api('/api/aside/launch', { method: 'POST' }).then(poll);
+}
+
+function firstUserText(msgs) {
+  for (const m of msgs || []) {
+    if (m.role !== 'user') continue;
+    const t = (m.blocks || []).filter(b => b.type === 'text').map(b => b.text).join(' ');
+    const clean = t.replace(ATT_BLOCK, '').replace(/\s+/g, ' ').trim();
+    if (clean) return clean;
+  }
+  return '';
+}
+
+function renderChat() {
+  // 목록은 이제 30건씩만 로드된다 → 오래된 대화를 새로고침으로 바로 열면 목록에 없다.
+  // 그럴 땐 첫 user 발화에서 제목을 만든다 (서버가 하는 것과 같은 규칙).
+  const title = S.sessions.find(s => s.id === S.sessionId)?.title ||
+    (S.sessionId ? (firstUserText(S.msgs).slice(0, 80) || '대화') : '새 대화');
+  $('#chatTitle').textContent = title;
+  document.title = (S.view === 'tabs' ? '탭' : S.view === 'settings' ? '설정' : title) + ' · Aside';
+  $('#chatErr').textContent = S.err || '';
+  const box = $('#msgs');
+  const atBottom = box.parentElement.scrollTop + box.parentElement.clientHeight
+                   > box.parentElement.scrollHeight - 120;
+  const items = groupMessages(S.msgs);
+  const one = (it, i) => itemHtml(it, S.running && i === items.length - 1 && it.kind === 'act');
+  const pendingHtml = S.pending ? `<div class="user pending">${
+        (S.pendingAtts || []).length
+          ? `<div class="atts">${S.pendingAtts.map(f =>
+              `<img src="/api/upload/${esc(f)}" alt="">`).join('')}</div>` : ''
+      }${esc(S.pending)}</div>` : '';
+  const workingHtml = S.running ? `<div class="working"><i class="spin"></i>작업 중…</div>` : '';
+  // 전송한 턴은 스페이서(.turn min-height)로 감싼다 — 새 유저 메시지가 화면 상단으로
+  // 올라오는 claude.ai 모션. 예전엔 역사가 지워져서 "우연히" 이렇게 보였는데,
+  // 이제는 위로 스크롤하면 이전 내용이 그대로 있다.
+  let cut = -1;
+  if (S.pending || S.running || S.holdTurn)
+    for (let i = items.length - 1; i >= 0; i--)
+      if (items[i].kind === 'user') { cut = i; break; }
+  const turnBody = (cut >= 0 ? items.slice(cut).map((it, j) => one(it, cut + j)).join('') : '')
+    + pendingHtml + workingHtml;
+  const wrap = (cut >= 0 || S.pending)
+    ? `<div class="turn" style="min-height:${Math.max(0, box.parentElement.clientHeight - 140)}px">${turnBody}</div>`
+    : turnBody;
+  box.innerHTML = items.slice(0, cut >= 0 ? cut : items.length).map(one).join('') + wrap;
+  box.querySelectorAll('.codebar .cp').forEach(b => b.onclick = e => {
+    const code = e.target.closest('.codewrap')?.querySelector('code');
+    if (!code) return;
+    navigator.clipboard.writeText(code.textContent);
+    e.target.textContent = '복사됨'; setTimeout(() => e.target.textContent = '복사', 1200);
+  });
+  highlightNew(box);
+  box.querySelectorAll('.asst img, .user .atts img').forEach(im => im.onclick = () => zoom(im.src));
+  highlightNew(box);
+  const sb = $('#send');
+  sb.className = S.running ? 'stop' : '';
+  sb.textContent = S.running ? '■' : '➤';
+  sb.title = S.running ? '스트리밍 끊기 (실행 자체는 Aside 앱에서 중단)' : '보내기';
+  if (atBottom) box.parentElement.scrollTop = box.parentElement.scrollHeight;
+}
+
+// ── 턴 묶기 ────────────────────────────────────────────────────────
+// claude.ai 실측 규칙: 한 어시스턴트 턴에서 "최종 답변 텍스트"가 나오기 전까지의
+// 모든 툴 활동(생각·툴호출·툴결과)을 pill 하나로 접는다. 개수가 아니라 턴 단위다.
+// 검색 3건도, 페이지읽기+검색처럼 종류가 섞여도 pill 하나. 텍스트가 나오면 거기서 끊긴다.
+function groupMessages(msgs) {
+  const items = [];
+  let act = [];
+  const flush = () => { if (act.length) { items.push({ kind: 'act', steps: act }); act = []; } };
+  for (const m of msgs) {
+    if (m.role === 'user') { flush(); items.push({ kind: 'user', m }); continue; }
+    if (m.role === 'system' || m.role === 'toolResult') { act.push(m); continue; }
+    const blocks = m.blocks || [];
+    const textBlocks = blocks.filter(b => b.type === 'text' && (b.text || '').trim());
+    const rest = blocks.filter(b => b.type !== 'text');
+    if (rest.length) act.push({ ...m, blocks: rest });
+    if (textBlocks.length) { flush(); items.push({ kind: 'answer', m: { ...m, blocks: textBlocks } }); }
+  }
+  flush();
+  return items;
+}
+
+/** 접힘 pill 문구. 실행 중이면 현재진행형 + 지금 뭘 하는지 한 줄 (claude 와 같은 방식). */
+function actLabel(steps, live) {
+  const tools = [];
+  let lastThink = '';
+  let t0 = null, t1 = null;
+  for (const m of steps) {
+    if (m.ts) { t0 = t0 ?? m.ts; t1 = m.ts; }
+    for (const b of (m.blocks || [])) {
+      if (b.type === 'toolCall' && b.name) tools.push(b.name);
+      if (b.type === 'thinking' && (b.text || '').trim())
+        lastThink = String(b.text).split('\n').find(l => l.trim())?.replace(/\*/g, '').trim() || lastThink;
+    }
+    if (m.toolName) tools.push(m.toolName);
+  }
+  if (live) return lastThink ? `작업 중 · ${lastThink.slice(0, 60)}` : '작업 중…';
+  const uniq = [...new Set(tools)];
+  if (!uniq.length) {
+    const sec = (t0 && t1) ? Math.max(1, Math.round((t1 - t0) / 1000)) : 0;
+    return sec ? `${sec}초 동안 생각함` : '생각함';
+  }
+  const n = tools.length;
+  const head = uniq.length === 1 ? uniq[0] : `도구 ${uniq.length}종`;
+  return `${head} 실행함${n > 1 ? ` · ${n}단계` : ''}`;
+}
+
+function stepHtml(m) {
+  const text = (m.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  if (m.role === 'system') return `<div class="sys">${esc(text.slice(0, 300))}</div>`;
+  if (m.role === 'toolResult') {
+    const head = (text.split('\n').find(l => l.trim()) || '').slice(0, 80);
+    return `<details class="res ${m.isError ? 'err' : ''}" ${m.isError ? 'open' : ''}>
+      <summary>${m.isError ? '실패' : '결과'}${m.toolName ? ' · ' + esc(m.toolName) : ''}
+        &nbsp;${esc(head)}</summary>
+      <div class="body">${esc(text.slice(0, 20000))}</div></details>`;
+  }
+  return (m.blocks || []).map(b => {
+    if (b.type === 'thinking') {
+      const head = (String(b.text || '').split('\n').find(l => l.trim()) || '생각 중')
+        .replace(/\*/g, '').slice(0, 90);
+      return `<details class="think"><summary>${esc(head)}</summary>
+        <div class="body">${esc(b.text || '(내용 없음)')}</div></details>`;
+    }
+    if (b.type === 'toolCall') {
+      const a = b.args || {};
+      const body = a.code || a.command || a.query || a.prompt || a.path || a.url || JSON.stringify(a, null, 1);
+      const tl = hlLang(TOOL_LANG[b.name]);
+      return `<details class="tool"><summary><span class="chip">
+        <span class="g">${GLYPH[b.name] || '•'}</span>${esc(b.name || 'tool')}</span></summary>
+        <div class="body"><code${tl ? ` class="language-${tl}"` : ''}>${esc(String(body))}</code></div>
+        </details>`;
+    }
+    if (b.type === 'image')
+      return `<img src="/api/media/${esc(b.mediaId)}" loading="lazy">`;
+    return '';
+  }).join('');
+}
+
+// 브리지가 프롬프트 앞에 붙인 "[첨부 이미지] - 이름 → 경로" 블록을 썸네일로 되돌린다.
+const ATT_BLOCK = /^\[첨부 이미지\]\n((?:- .*\n)+)위 이미지를[^\n]*\n\n?/;
+function splitAttachments(text) {
+  const m = text.match(ATT_BLOCK);
+  if (!m) return { body: text, atts: [] };
+  const atts = m[1].trim().split('\n').map(l => {
+    const mm = l.match(/^- (.*) → (.+\/([^/]+))$/);
+    return mm ? { name: mm[1], file: mm[3] } : null;
+  }).filter(Boolean);
+  return { body: text.slice(m[0].length), atts };
+}
+
+function itemHtml(item, live) {
+  if (item.kind === 'user') {
+    const raw = (item.m.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const { body, atts } = splitAttachments(raw);
+    const thumbs = atts.length
+      ? `<div class="atts">${atts.map(a =>
+          `<img src="/api/upload/${esc(a.file)}" alt="${esc(a.name)}" loading="lazy">`).join('')}</div>`
+      : '';
+    return `<div class="user">${thumbs}${esc(body)}</div>`;
+  }
+  if (item.kind === 'answer')
+    return `<div class="asst">${(item.m.blocks || []).map(b =>
+      b.type === 'image' ? `<img src="/api/media/${esc(b.mediaId)}" loading="lazy">` : md(b.text || '')
+    ).join('')}</div>`;
+  // 툴 활동 — 접힘이 기본
+  const open = S.openActs.has(item.steps[0]?.seq);
+  return `<details class="act${live ? ' live' : ''}" data-seq="${item.steps[0]?.seq}" ${open ? 'open' : ''}>
+    <summary><span class="spark"></span><span class="lbl">${esc(actLabel(item.steps, live))}</span></summary>
+    <div class="actbody">${item.steps.map(stepHtml).join('')}</div></details>`;
+}
+
+function zoom(src) {
+  const d = document.createElement('div');
+  d.className = 'zoom'; d.innerHTML = `<img src="${esc(src)}">`;
+  d.onclick = closeLayer; document.body.appendChild(d);
+  pushLayer('zoom');
+}
+
+// ─────────────────────────────────────────────── 탭 상세
+function showTab(t) {
+  if (!t) return;
+  const m = document.createElement('div');
+  m.className = 'mask';
+  m.innerHTML = `<div class="sheet" onclick="event.stopPropagation()">
+    <h3>${esc(t.title || '')}</h3>
+    <div class="url">${esc(t.url || '')}</div>
+    ${t.loaded
+      ? `<img class="shot" src="${esc(withTok('/api/tabs/' + t.targetId + '/shot?fresh=true'))}">`
+      : `<div class="empty">크롬이 메모리를 회수한 잠든 탭입니다.<br>
+           캡처하려면 다시 열어야 합니다.</div>`}
+    <textarea id="instr">이 페이지 내용을 한국어로 요약해줘.</textarea>
+    <div class="acts">
+      ${t.loaded
+        ? `<button class="btn pri" id="ask">에이전트에게 시키기</button>
+           <button class="btn" id="focus">포커스</button>`
+        : `<button class="btn pri" id="open">열어서 보기</button>`}
+      <button class="btn" id="close">닫기</button>
+    </div></div>`;
+  m.onclick = closeLayer;
+  document.body.appendChild(m);
+  pushLayer('sheet');
+  const q = s => m.querySelector(s);
+  q('#ask') && (q('#ask').onclick = () => {
+    const instr = q('#instr').value;
+    closeLayer();                       // 시트 엔트리를 먼저 걷어내고 이동한다
+    newChat();
+    send(`브라우저 탭 targetId=\`${t.targetId}\` (제목: ${t.title}, URL: ${t.url}) 을 ` +
+         `attachBrowserTab 으로 붙여서 다음을 해줘.\n\n${instr}`);
+  });
+  q('#focus') && (q('#focus').onclick = () =>
+    api('/api/tabs/' + t.targetId + '/focus', { method: 'POST' }).catch(showErr));
+  q('#open') && (q('#open').onclick = () => {
+    api('/api/tabs', { method: 'POST', body: JSON.stringify({ url: t.url }) })
+      .then(() => { closeLayer(); loadTabs(true); }).catch(showErr);
+  });
+  q('#close').onclick = () => {
+    api('/api/tabs/' + t.targetId, { method: 'DELETE' })
+      .then(() => { closeLayer(); loadTabs(true); }).catch(showErr);
+  };
+}
+
+// ─────────────────────────────────────────────── 데이터
+const showErr = e => { S.err = e.body || e.message; render(); };
+
+const PAGE = 30;
+
+// mode: 'reset'  검색어가 바뀌었다 → 목록·커서를 버리고 1페이지부터
+//       'merge'  주기 새로고침 → 1페이지만 다시 받아 기존에 덮어쓴다 (더보기 진척 유지)
+//       'more'   더보기 → 커서 이후를 이어붙인다
+async function loadSessions(mode = 'merge') {
+  if (mode === 'more' && (!S.cursor || S.loadingMore)) return;
+  if (mode === 'reset') { S.sessions = []; S.cursor = null; }
+  const p = new URLSearchParams({ limit: String(PAGE) });
+  if (mode === 'more') p.set('cursor', S.cursor);
+  if (S.sq.trim()) p.set('q', S.sq.trim());
+  const mine = ++loadSeq;                       // 늦게 돌아온 이전 요청이 덮어쓰지 못하게
+  const wasEmpty = !S.sessions.length;
+  S.loadingMore = (mode === 'more'); render();
+  try {
+    const r = await api('/api/sessions?' + p);
+    if (mine !== loadSeq) return;
+    const by = new Map(mode === 'reset' ? [] : S.sessions.map(x => [x.id, x]));
+    for (const x of r.items) by.set(x.id, x);   // 서버 값이 항상 이긴다
+    S.sessions = [...by.values()].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    // merge 는 1페이지만 덧칠하는 새로고침이다. 커서를 건드리면 끝까지 펼쳐둔 목록에
+    // '더보기' 가 되살아나거나, 중간까지 본 진척이 1페이지로 되감긴다.
+    if (mode !== 'merge' || wasEmpty) S.cursor = r.nextCursor;
+    S.total = r.total; S.matched = r.matched; S.listErr = null;
+  } catch (e) {
+    if (mine !== loadSeq) return;
+    S.listErr = e.status === 401 ? '토큰이 틀렸습니다 (설정 확인)' : (e.message);
+  }
+  S.loadingMore = false;
+  render();
+}
+let loadSeq = 0;
+async function loadTabs(force) {
+  try { S.tabs = (await api('/api/tabs?refresh=' + !!force)).tabs; S.err = null; }
+  catch (e) { showErr(e); }
+  render();
+}
+async function poll() { try { S.health = await api('/api/health'); render(); } catch {} }
+
+// run.done 은 그 순간 구독 중인 소켓에만 간다. 새로고침·백그라운드로 놓칠 수 있으므로
+// 실행 중일 때만 가벼운 상태 확인을 돌린다. (데몬이 보는 상태라 브리지 재기동에도 정확하다)
+async function pollRunning() {
+  if (!S.running || !S.sessionId || !S.token) return;
+  try {
+    const r = await api(`/api/sessions/${S.sessionId}/status`);
+    if (!r.running && S.running) {
+      S.running = false; S.pending = null;
+      const m = await api(`/api/sessions/${S.sessionId}/messages?tail=400`);
+      S.msgs = m.messages; S.nextSeq = m.nextSeq; S.offset = m.offset;
+      loadSessions(); render();
+    }
+  } catch {}
+}
+setInterval(pollRunning, 6000);
+function refreshAll() { loadSessions(); if (S.view === 'tabs') loadTabs(); poll(); }
+
+// 아래 둘은 "적용" 만 한다. 히스토리는 navigate/applyState 가 책임진다.
+async function openSession(id) {
+  if (S.sessionId && S.sessionId !== id) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  S.sessionId = id; S.msgs = []; S.pending = null; S.err = null; S.holdTurn = false;
+  localStorage.setItem('lastSession', id);
+  render();
+  try {
+    const r = await api(`/api/sessions/${id}/messages?tail=400`);
+    if (S.sessionId !== id) return;                 // 그새 다른 데로 갔으면 버린다
+    S.msgs = r.messages; S.nextSeq = r.nextSeq; S.offset = r.offset; S.running = r.running;
+    // 죽은 딥링크: push 하면 back 이 죽은 URL 로 되돌아가므로 replace 로 지운다.
+    if (!r.messages.length && !r.running) {
+      clearSession(); S.err = '그 대화를 찾을 수 없습니다';
+      history.replaceState(curState(), '', urlOf(curState())); render(); return;
+    }
+  } catch (e) { showErr(e); }
+  ws?.send(JSON.stringify({ op: 'sub', sessionId: id, fromSeq: S.nextSeq, fromOffset: S.offset }));
+  render();
+}
+
+function clearSession() {
+  if (S.sessionId) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  S.sessionId = null; S.msgs = []; S.running = false; S.pending = null; S.err = null; S.holdTurn = false;
+  localStorage.removeItem('lastSession');
+}
+
+function newChat() { navigate({ view: 'chats', sessionId: null }); $('#draft').focus(); }
+
+function send(prompt) {
+  const pending = S.atts.filter(a => !a.id).length;
+  if (pending) { S.err = '이미지 업로드 중입니다…'; render(); return; }
+  const attachments = S.atts.filter(a => a.id).map(a => ({ id: a.id, name: a.name }));
+  if ((!prompt.trim() && !attachments.length) || !ws || ws.readyState !== 1) return;
+  S.err = null;
+  S.pending = prompt; S.pendingAtts = attachments.map(a => a.id);
+  S.running = true;
+  S.atts.forEach(a => a.preview?.startsWith('blob:') && URL.revokeObjectURL(a.preview));
+  S.atts = []; renderAtts();
+  S.holdTurn = true;              // 응답이 끝나도 스페이서를 유지 (걷으면 스크롤이 튄다)
+  render();
+  const sc = $('#chatScroll');
+  requestAnimationFrame(() => sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }));
+  ws.send(JSON.stringify(S.sessionId
+    ? { op: 'continue', sessionId: S.sessionId, prompt, attachments }
+    : { op: 'run', prompt, attachments }));
+}
+
+// ─────────────────────────────────────────────── WebSocket
+let ws = null, backoff = 0;
+function connect() {
+  if (!S.token) return;
+  try { ws?.close(); } catch {}
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  ws = new WebSocket(url);
+  ws.onopen = () => { backoff = 0; S.wsOpen = true; render();
+    if (S.sessionId) ws.send(JSON.stringify({ op: 'sub', sessionId: S.sessionId,
+                                              fromSeq: S.nextSeq, fromOffset: S.offset })); };
+  ws.onclose = () => { S.wsOpen = false; render();
+    setTimeout(connect, Math.min(20000, 1000 * Math.pow(2, backoff++))); };
+  ws.onerror = () => {};
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.op === 'ping') return;                      // 서버 하트비트(CF 100초 idle 회피)
+    if (m.op === 'run.started') {
+      S.running = true;
+      // 초기화는 "새 대화가 세션을 얻었을 때"만. continue 에서도 지우면
+      // 역사가 통째로 사라진다 (위로 튀는 스크롤의 정체가 이거였다).
+      if (S.sessionId !== m.sessionId) {
+        S.sessionId = m.sessionId; S.msgs = []; S.nextSeq = 0; S.offset = 0;
+        localStorage.setItem('lastSession', m.sessionId);
+        history.replaceState(curState(), '', urlOf(curState()));
+      }
+      loadSessions(); }
+    else if (m.op === 'msg') {
+      if (m.sessionId !== S.sessionId) return;
+      if (m.message.role === 'user') { S.pending = null; S.pendingAtts = null; }
+      const i = S.msgs.findIndex(x => x.seq === m.message.seq);
+      if (i >= 0) S.msgs[i] = m.message; else S.msgs.push(m.message);
+      S.nextSeq = Math.max(S.nextSeq, m.message.seq + 1);
+    }
+    else if (m.op === 'run.done') {
+      if (m.sessionId === S.sessionId) {
+        S.running = false;
+        if (S.pending) {          // 유저 메시지가 스트림에 안 실렸다 = 시작 실패
+          const out = (m.output || m.error || '').trim();
+          S.err = /Session not found/i.test(out)
+            ? '이 대화는 이어쓸 수 없습니다 — Aside 데몬이 재시작되며 세션을 잊었습니다. 새 대화로 시작해주세요.'
+            : (out || '실행이 시작되지 못했습니다');
+          $('#draft').value = S.pending;   // 쓴 내용은 잃지 않게 초안으로 되돌린다
+          S.pending = null; S.pendingAtts = null;
+          render(); return;   // 실행이 없었으니 목록도 안 바뀌었다.
+                              // loadSessions 를 부르면 성공 시 S.err=null 로 방금 에러를 덮는다.
+        }
+      }
+      loadSessions(); }
+    else if (m.op === 'error') { S.err = m.message || m.error; S.running = false; S.pending = null; }
+    render();
+  };
+}
+
+// ─────────────────────────────────────────────── 첨부
+// 폰 카메라 원본은 5~12MB 라 그대로 올리면 느리고 에이전트가 볼 필요도 없다.
+// 캔버스로 긴 변 1600px · JPEG q0.85 로 줄여서 올린다 (PNG 는 스크린샷일 수 있어 유지).
+const MAX_EDGE = 1600;
+
+function downscale(file) {
+  return new Promise(resolve => {
+    if (file.type === 'image/gif') return resolve(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+      if (scale === 1 && file.size < 1.5 * 1024 * 1024) return resolve(file);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const keepPng = file.type === 'image/png' && scale === 1;
+      c.toBlob(b => resolve(b || file), keepPng ? 'image/png' : 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+function renderAtts() {
+  const el = $('#attachRow');
+  el.innerHTML = S.atts.map((a, i) => `
+    <div class="att${a.id ? '' : ' up'}">
+      <img src="${esc(a.preview)}" alt="">
+      <button class="x" data-i="${i}">×</button>
+    </div>`).join('');
+  el.querySelectorAll('.x').forEach(b => b.onclick = () => {
+    const a = S.atts[+b.dataset.i];
+    if (a?.preview?.startsWith('blob:')) URL.revokeObjectURL(a.preview);
+    S.atts.splice(+b.dataset.i, 1); renderAtts();
+  });
+}
+
+async function addFiles(files) {
+  for (const f of [...files].slice(0, 6)) {
+    if (!/^image\//.test(f.type)) continue;
+    const slot = { preview: URL.createObjectURL(f), id: null, name: f.name || 'image' };
+    S.atts.push(slot); renderAtts();
+    try {
+      const blob = await downscale(f);
+      const r = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + S.token, 'X-Filename': encodeURIComponent(slot.name) },
+        body: blob,
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const info = await r.json();
+      slot.id = info.id; slot.path = info.path;
+    } catch (e) {
+      S.err = '이미지 업로드 실패: ' + (e.message || e);
+      S.atts = S.atts.filter(x => x !== slot);
+      render();
+    }
+    renderAtts();
+  }
+}
+
+// 네이티브 앱이면 카메라/갤러리를 네이티브 시트로. 아니면 <input type=file>.
+async function pickImage() {
+  const Cam = window.Capacitor?.Plugins?.Camera;
+  if (!Cam) { $('#filePick').click(); return; }
+  try {
+    const photo = await Cam.getPhoto({
+      quality: 88, allowEditing: false, resultType: 'base64',
+      source: 'PROMPT', width: MAX_EDGE, correctOrientation: true,
+      promptLabelHeader: '이미지 첨부', promptLabelPhoto: '앨범에서 선택',
+      promptLabelPicture: '카메라로 촬영', promptLabelCancel: '취소',
+    });
+    const bin = atob(photo.base64String);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'image/' + (photo.format || 'jpeg') });
+    await addFiles([new File([blob], 'camera.' + (photo.format || 'jpg'), { type: blob.type })]);
+  } catch (e) {
+    if (!/cancel/i.test(String(e?.message || e))) { S.err = '카메라 실패: ' + (e.message || e); render(); }
+  }
+}
+
+// ─────────────────────────────────────────────── 모바일 드로어
+// 드로어의 열림/닫힘은 applyState 만 쓴다 — 직접 토글하면 히스토리와 어긋난다.
+const drawerOpen = () => document.body.classList.contains('drawer');
+const isMobile = () => innerWidth <= 820;
+
+// ─────────────────────────────────────────────── 네이티브(Capacitor) 점진적 강화
+// 앱은 server.url 로 이 페이지를 그대로 로드한다. Capacitor 가 브리지 스크립트를 주입하므로
+// window.Capacitor 가 있으면 네이티브 기능을 쓸 수 있고, 없으면(=일반 브라우저) 조용히 넘어간다.
+const native = () => !!(window.Capacitor?.isNativePlatform?.());
+
+async function initNative() {
+  if (!native()) return;
+  document.documentElement.classList.add('native');
+  const P = window.Capacitor.Plugins || {};
+
+  // 안드로이드 하드웨어 백버튼: 앱을 종료하지 말고 화면 뒤로
+  try {
+    // 히스토리가 진실이므로 사다리가 필요 없다. 레이어든 화면이든 전부 엔트리로 쌓여 있다.
+    await P.App?.addListener('backButton', ({ canGoBack }) =>
+      canGoBack ? history.back() : P.App?.exitApp?.());
+  } catch {}
+
+  // 시스템 바 아이콘 명암을 테마에 맞춘다 (바 배경은 투명 → 웹 배경이 비친다)
+  const syncBars = async () => {
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    try {
+      await P.SafeArea?.setSystemBarsStyle?.({ style: dark ? 'DARK' : 'LIGHT' });
+    } catch {}
+  };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncBars);
+  syncBars();
+
+  // 앱이 다시 앞으로 오면 상태를 새로 읽는다 (백그라운드 동안 실행이 끝났을 수 있다)
+  try {
+    await P.App?.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) return;
+      refreshAll();
+      if (S.sessionId) pollRunning();
+      if (ws?.readyState !== 1) connect();
+    });
+  } catch {}
+}
+
+// ─────────────────────────────────────────────── 이벤트
+// ── 썸네일 로더 ────────────────────────────────────────────────────
+// 살아있는 탭이 48개다. 한꺼번에 요청하면 브리지의 단일 REPL 락에 줄줄이 쌓여
+// 탭 목록 조회까지 뒤로 밀린다(실제로 타임아웃남). 화면에 보이는 것만 3개씩 받는다.
+const shotQueue = [];
+let shotActive = 0;
+function pumpShots() {
+  while (shotActive < 3 && shotQueue.length) {
+    const im = shotQueue.shift();
+    if (!im.isConnected || im.dataset.loading) continue;
+    im.dataset.loading = '1';
+    shotActive++;
+    const done = () => { shotActive--; pumpShots(); };
+    im.addEventListener('load', done, { once: true });
+    im.addEventListener('error', done, { once: true });
+    im.src = im.dataset.src;
+  }
+}
+const shotObserver = new IntersectionObserver(entries => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    shotObserver.unobserve(e.target);
+    shotQueue.push(e.target);
+  }
+  pumpShots();
+}, { root: $('#list'), rootMargin: '200px' });
+
+function observeThumbs() {
+  $('#list').querySelectorAll('img.thumb[data-src]:not([data-seen])').forEach(im => {
+    im.dataset.seen = '1';
+    shotObserver.observe(im);
+  });
+}
+
+// 썸네일 로드 실패(그새 잠든 탭 → 502/503)는 파비콘으로 대체한다.
+// error 이벤트는 버블링하지 않으므로 캡처 단계로 받는다.
+$('#list').addEventListener('error', e => {
+  const im = e.target;
+  if (!(im instanceof HTMLImageElement) || !im.classList.contains('thumb')) return;
+  const fav = im.dataset.fav;
+  const box = document.createElement('div');
+  box.className = 'fav';
+  if (fav) { const f = document.createElement('img'); f.src = fav; box.appendChild(f); }
+  else box.textContent = '◻';
+  im.replaceWith(box);
+}, true);
+
+// 대화 안의 이미지가 끝내 안 열리는 경우 — 브리지가 서빙할 수 없는 경로
+// (세션/업로드 디렉토리 밖의 로컬 파일)를 에이전트가 박았을 때다.
+// 깨진 아이콘 대신 왜 안 보이는지와 원본 경로를 남긴다.
+$('#msgs').addEventListener('error', e => {
+  const im = e.target;
+  if (!(im instanceof HTMLImageElement) || im.dataset.failed) return;
+  im.dataset.failed = '1';
+  const note = document.createElement('div');
+  note.className = 'meta';
+  note.textContent = `이미지를 불러올 수 없음 · ${im.getAttribute('src') || ''}`;
+  im.replaceWith(note);
+}, true);
+
+// 목록 클릭은 위임으로 받는다 — 리스트가 다시 그려져도 핸들러가 사라지지 않는다.
+$('#list').addEventListener('click', e => {
+  if (e.target.closest('#more')) return loadSessions('more');
+  const card = e.target.closest('.card');
+  if (card) return navigate({ view: 'chats', sessionId: card.dataset.id },
+                            { replace: card.dataset.id === S.sessionId });
+  const row = e.target.closest('.tabrow');
+  if (row) return showTab(S.tabs.find(t => t.targetId === row.dataset.id));
+});
+
+let sqTimer = null;
+$('#list').addEventListener('input', e => {
+  if (e.target.id !== 'sq') return;
+  S.sq = e.target.value;
+  sqCaret = e.target.selectionStart;
+  clearTimeout(sqTimer);
+  sqTimer = setTimeout(() => navigate({ q: S.sq }, { replace: true }), 220);
+});
+$('#list').addEventListener('focusout', e => { if (e.target.id === 'sq') sqCaret = null; });
+
+// 모바일에선 목록(드로어)까지 같은 엔트리에 담는다 — 엔트리 두 개로 쪼개면 back 이 두 번 필요해진다.
+document.querySelectorAll('.seg').forEach(b => b.onclick = () =>
+  navigate({ view: b.dataset.view, layer: isMobile() ? 'drawer' : undefined }));
+$('#refresh').onclick = () => S.view === 'tabs' ? loadTabs(true) : refreshAll();
+$('#newChat').onclick = newChat;
+$('#attach').onclick = pickImage;
+$('#filePick').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+// 붙여넣기·드래그로도 첨부되게
+$('#draft').addEventListener('paste', e => {
+  const imgs = [...(e.clipboardData?.files || [])].filter(f => /^image\//.test(f.type));
+  if (imgs.length) { e.preventDefault(); addFiles(imgs); }
+});
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  const imgs = [...(e.dataTransfer?.files || [])].filter(f => /^image\//.test(f.type));
+  if (imgs.length) { e.preventDefault(); addFiles(imgs); }
+});
+$('#menu').onclick = () => {
+  if (isMobile()) return drawerOpen() ? closeLayer() : pushLayer('drawer');
+  const hide = document.body.classList.toggle('sbhide');
+  localStorage.setItem('sbhide', hide ? '1' : '');
+};
+if (localStorage.getItem('sbhide') === '1') document.body.classList.add('sbhide');
+$('#scrim').onclick = () => closeLayer();   // 즉시 평가하면 const TDZ 에 걸린다
+$('#send').onclick = () => {
+  if (S.running) {
+    // 주의: 이건 브리지의 로컬 CLI 만 끊는다. 데몬 쪽 에이전트 실행은 계속된다(실측).
+    // 진짜 중단은 Aside 앱 UI 에서만 된다.
+    ws?.send(JSON.stringify({ op: 'abort', sessionId: S.sessionId }));
+    S.running = false;
+    S.err = '스트리밍만 끊었습니다. 에이전트 실행 자체는 Aside 앱에서 중단해야 합니다.';
+    render();
+    setTimeout(() => { if (S.err && S.err.startsWith('스트리밍만')) { S.err = null; render(); } }, 8000);
+    return;
+  }
+  const d = $('#draft'); send(d.value); d.value = ''; d.style.height = 'auto';
+};
+$('#draft').addEventListener('input', e => {
+  e.target.style.height = 'auto';
+  e.target.style.height = Math.min(180, e.target.scrollHeight) + 'px';
+});
+// 엔터 = 전송, Shift(또는 Alt)+엔터 = 줄바꿈.
+// ★한글 조합 중(isComposing / keyCode 229)의 엔터는 "조합 확정"이라 절대 전송하면 안 된다.
+//   이걸 안 막으면 "안녕" 치고 엔터 누를 때 조합만 끝내려던 게 그대로 전송된다.
+$('#draft').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;   // 줄바꿈
+  e.preventDefault();
+  $('#send').click();
+});
+
+// 부트스트랩: 토큰이 없으면 Access 로그인 사실을 근거로 브리지가 내려준다.
+// (브리지가 cf-access-jwt-assertion 을 Cloudflare 공개키로 서명 검증한 뒤에만 준다)
+
+async function boot() {
+  // 매번 부른다. localStorage 에 토큰이 있어도 <img>/WS 가 쓰는 쿠키는 여기서만 심긴다.
+  try {
+    const r = await fetch('/api/web-token');
+    if (r.ok) {
+      const t = (await r.json()).token || '';
+      if (t) { S.token = t; localStorage.setItem('token', t); }
+    }
+  } catch {}
+  loadFonts();
+  initNative();
+  connect();
+
+  history.scrollRestoration = 'manual';   // 브라우저 자동복원과 우리 복원이 싸운다
+
+  const st = parseUrl();
+  // URL 이 항상 이긴다. 예외는 하나 — 앱의 "/".
+  // 웹의 "/" 는 명시적 목적지(= 새 대화)다. 북마크한 루트가 남의 마지막 대화를 열면 안 되고,
+  // 그러면 "새 대화로 가는 주소" 자체가 없어진다.
+  // 앱엔 주소창이 없어서 "/" 는 목적지가 아니라 그냥 앱이 켜진 것이다 → 마지막 대화 복원.
+  if (native() && st.view === 'chats' && !st.sessionId && !location.search) {
+    const last = localStorage.getItem('lastSession');
+    if (last) st.sessionId = last;
+  }
+  history.replaceState(st, '', urlOf(st));   // 주소 정규화 (/c/x/ → /c/x 등)
+  applyState(st);                            // 여기서 목록·대화·탭이 다 로드된다
+  poll();
+}
+boot();
+setInterval(poll, 30000);
+</script>
+</body>
+</html>

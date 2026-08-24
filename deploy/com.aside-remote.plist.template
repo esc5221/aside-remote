@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.aside-remote</string>
+  <key>ProgramArguments</key><array>
+    <string>__PYTHON__</string>
+    <string>__REPO__/server.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key><string>__REPO__/logs/bridge.out.log</string>
+  <key>StandardErrorPath</key><string>__REPO__/logs/bridge.err.log</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>__HOME__</string>
+  </dict>
+</dict>
+</plist>
