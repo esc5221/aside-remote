@@ -4,5 +4,9 @@ web/vendor/highlight.min.js and web/vendor/lang-*.min.js
   highlight.js — BSD 3-Clause License
   https://github.com/highlightjs/highlight.js
 
+web/vendor/mermaid.min.js
+  mermaid — MIT License
+  https://github.com/mermaid-js/mermaid
+
 Web fonts are proxied at runtime from Google Fonts (SIL Open Font License)
 and cached locally; no font files are distributed with this repository.
