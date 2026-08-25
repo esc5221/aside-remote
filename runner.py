@@ -146,6 +146,13 @@ async def start_run(prompt: str, *, model: str | None = None, effort: str | None
                     log.warning("multiple new session dirs detected: %s — picking newest", new)
                 newest = max(new, key=lambda n: (config.SESSIONS_DIR / n).stat().st_mtime)
                 run.session_id = newest.split("_", 1)[1]
+                # exec 세션은 ephemeral=1 로 태어나 데몬 재시작 때 퍼지된다.
+                # 태어나자마자 영속화해 두면 재시작 후에도 이어쓰기가 된다.
+                try:
+                    import daemondb
+                    await asyncio.to_thread(daemondb.persist, run.session_id)
+                except Exception:
+                    pass
                 sessions._reindex()
                 _orphans.remove(run)
                 _runs[run.session_id] = run

@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 import browser
 import cfaccess
 import config
+import daemondb
 import fonts
 import uploads
 import runner
@@ -707,6 +708,8 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         if existing and existing.running:
             await _send(ws, {"op": "error", "requestId": rid, "message": "이미 실행 중입니다"})
             return
+        # 데몬이 퍼지한 세션이면(재시작으로 잊음) 레지스트리 행을 재삽입해 되살린다.
+        await asyncio.to_thread(daemondb.ensure_alive, sid)
         _msgs, offset = sessions.read_messages(sid)
         await hub.subscribe(ws, sid, len(_msgs), offset)
         try:
