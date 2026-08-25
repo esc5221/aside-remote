@@ -250,11 +250,26 @@ a{color:#3b7dd8}
              border:1px solid transparent}
 .codebar .cp:hover{background:var(--code-line);color:var(--code-fg)}
 pre.code{margin:0;padding:13px;overflow-x:auto;background:none}
-.mmd{margin:8px 0;overflow-x:auto;max-width:100%}
+.mmd{margin:8px 0;max-width:100%;border-radius:12px;overflow:hidden}
 .mmd svg{max-width:100%;height:auto;display:block;margin:0 auto}
-.mmd[data-done]{background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:14px}
-.mmd .mmdsrc{font-size:12px;color:var(--faint);white-space:pre-wrap;word-break:break-word;
-             background:var(--code-bg);border-radius:10px;padding:10px 12px}
+.mmd foreignObject{overflow:visible}   /* 측정이 1~2px 어긋나는 폰트에서도 글자를 안 자른다 */
+.mmd .mview{display:none;overflow-x:auto;padding:14px;background:var(--surface)}
+.mmd[data-done]{border:1px solid var(--line2)}
+.mmd[data-done] .mview{display:block}
+.mmd[data-done] .mmdsrc{display:none}
+.mmd[data-done].src .mview{display:none}
+.mmd[data-done].src .mmdsrc{display:block}
+.mmd .mmdbar{display:none;align-items:center;gap:8px;padding:6px 10px 6px 13px;
+             background:var(--code-bar);border-bottom:1px solid var(--code-line);
+             font-family:var(--font-ui)}
+.mmd[data-done] .mmdbar{display:flex}
+.mmd .mmdbar .lang{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+                   color:var(--code-dim);flex:1;font-weight:600}
+.mmd .mmdbar button{font-size:11px;color:var(--code-dim);padding:3px 8px;border-radius:6px;
+                    border:1px solid transparent;background:none}
+.mmd .mmdbar button:hover{background:var(--code-line);color:var(--code-fg)}
+.mmd .mmdsrc{margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;
+             background:var(--code-bg);padding:12px 13px;color:var(--code-fg)}
 pre.code code{background:none;padding:0;color:var(--code-fg);
               font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
               font-size:13px;line-height:1.62;tab-size:2}
@@ -641,6 +656,9 @@ function hlLang(lang) {
 function codeBlock(lang, body) {
   if ((lang || '').toLowerCase() === 'mermaid')
     return `<div class="mmd" data-src="${esc(body)}">` +
+           `<div class="mmdbar"><span class="lang">mermaid</span>` +
+           `<button class="mtg">코드</button><button class="mcp">복사</button></div>` +
+           `<div class="mview"></div>` +
            `<pre class="code mmdsrc">${esc(body)}</pre></div>`;
   const l = hlLang(lang);
   return `<div class="codewrap"><div class="codebar">` +
@@ -670,7 +688,11 @@ function mmdLoad() {
       window.mermaid.initialize({
         startOnLoad: false, securityLevel: 'strict',
         theme: dark ? 'dark' : 'neutral',
-        themeVariables: { fontFamily: 'inherit' },
+        // 'inherit'(Gowun Batang 세리프)는 mermaid 의 폭 측정이 한글에서 5~8px
+        // 과소평가돼 라벨 오른쪽이 잘린다 (fonts.ready 대기로도 안 고쳐짐 — 실측).
+        // 측정과 렌더가 일치하는 시스템 산세리프로 고정한다.
+        themeVariables: { fontFamily:
+          '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif' },
       });
       res(window.mermaid);
     };
@@ -699,10 +721,15 @@ async function renderMermaids(root) {
       }
     }
     if (!el.isConnected) continue;
-    el.innerHTML = svg;
+    el.querySelector('.mview').innerHTML = svg;
     el.dataset.done = '1';
+    if (mmdShowSrc.has(src)) {                    // 스트리밍 리렌더 후에도 토글 상태 유지
+      el.classList.add('src');
+      const b = el.querySelector('.mtg'); if (b) b.textContent = '다이어그램';
+    }
   }
 }
+const mmdShowSrc = new Set();                     // 코드 보기로 둔 다이어그램 (src 키)
 
 let hljsReady = false;
 function highlightNew(root) {
@@ -1566,6 +1593,20 @@ $('#msgs').addEventListener('error', e => {
   note.textContent = `이미지를 불러올 수 없음 · ${im.getAttribute('src') || ''}`;
   im.replaceWith(note);
 }, true);
+
+// 다이어그램 바(코드 토글·복사)도 위임 — #msgs 는 스트리밍마다 다시 그려진다.
+$('#msgs').addEventListener('click', e => {
+  const box = e.target.closest('.mmd');
+  if (!box) return;
+  if (e.target.classList.contains('mtg')) {
+    const show = box.classList.toggle('src');
+    e.target.textContent = show ? '다이어그램' : '코드';
+    if (show) mmdShowSrc.add(box.dataset.src); else mmdShowSrc.delete(box.dataset.src);
+  } else if (e.target.classList.contains('mcp')) {
+    navigator.clipboard.writeText(box.dataset.src);
+    e.target.textContent = '복사됨'; setTimeout(() => e.target.textContent = '복사', 1200);
+  }
+});
 
 // 목록 클릭은 위임으로 받는다 — 리스트가 다시 그려져도 핸들러가 사라지지 않는다.
 $('#list').addEventListener('click', e => {
