@@ -480,7 +480,7 @@ const S = {
   sessionId: null, running: false, pending: null,
   nextSeq: 0, offset: 0,
   health: null, wsOpen: false, err: null, listErr: null,
-  q: '', liveOnly: false, openActs: new Set(),
+  q: '', liveOnly: false, det: new Map(),   // details 열림/닫힘 기억 (key → bool)
   sq: '', loadedQ: null, cursor: null, total: 0, matched: 0, loadingMore: false,
   font: localStorage.getItem('font') || 'gowun-batang', fonts: [],
   atts: [],
@@ -1070,7 +1070,16 @@ function renderChat() {
   const wrap = (cut >= 0 || S.pending)
     ? `<div class="turn" style="min-height:${Math.max(0, box.parentElement.clientHeight - 140)}px">${turnBody}</div>`
     : turnBody;
+  // #msgs 는 메시지가 올 때마다 통째로 다시 그려진다 → 열린 본문의 내부 스크롤도 보존한다.
+  const keepScroll = new Map();
+  box.querySelectorAll('details[data-k][open] > .body').forEach(b => {
+    if (b.scrollTop) keepScroll.set(b.parentElement.dataset.k, b.scrollTop);
+  });
   box.innerHTML = items.slice(0, cut >= 0 ? cut : items.length).map(one).join('') + wrap;
+  box.querySelectorAll('details[data-k][open] > .body').forEach(b => {
+    const t = keepScroll.get(b.parentElement.dataset.k);
+    if (t) b.scrollTop = t;
+  });
   box.querySelectorAll('.codebar .cp').forEach(b => b.onclick = e => {
     const code = e.target.closest('.codewrap')?.querySelector('code');
     if (!code) return;
@@ -1133,28 +1142,33 @@ function actLabel(steps, live) {
   return `${head} 실행함${n > 1 ? ` · ${n}단계` : ''}`;
 }
 
-function stepHtml(m) {
+// <details> 열림 상태는 DOM 이 아니라 S.det 에 둔다 (세션 id + 턴 첫 seq + 단계/블록 위치가 키).
+const isOpen = (k, dflt) => S.det.has(k) ? S.det.get(k) : !!dflt;
+const dAttr = (k, dflt) => `data-k="${esc(k)}"${isOpen(k, dflt) ? ' open' : ''}`;
+
+function stepHtml(m, base, si) {
   const text = (m.blocks || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
   if (m.role === 'system') return `<div class="sys">${esc(text.slice(0, 300))}</div>`;
   if (m.role === 'toolResult') {
     const head = (text.split('\n').find(l => l.trim()) || '').slice(0, 80);
-    return `<details class="res ${m.isError ? 'err' : ''}" ${m.isError ? 'open' : ''}>
+    return `<details class="res ${m.isError ? 'err' : ''}" ${dAttr(`${base}/${si}`, m.isError)}>
       <summary>${m.isError ? '실패' : '결과'}${m.toolName ? ' · ' + esc(m.toolName) : ''}
         &nbsp;${esc(head)}</summary>
       <div class="body">${esc(text.slice(0, 20000))}</div></details>`;
   }
-  return (m.blocks || []).map(b => {
+  return (m.blocks || []).map((b, bi) => {
+    const k = `${base}/${si}.${bi}`;
     if (b.type === 'thinking') {
       const head = (String(b.text || '').split('\n').find(l => l.trim()) || '생각 중')
         .replace(/\*/g, '').slice(0, 90);
-      return `<details class="think"><summary>${esc(head)}</summary>
+      return `<details class="think" ${dAttr(k)}><summary>${esc(head)}</summary>
         <div class="body">${esc(b.text || '(내용 없음)')}</div></details>`;
     }
     if (b.type === 'toolCall') {
       const a = b.args || {};
       const body = a.code || a.command || a.query || a.prompt || a.path || a.url || JSON.stringify(a, null, 1);
       const tl = hlLang(TOOL_LANG[b.name]);
-      return `<details class="tool"><summary><span class="chip">
+      return `<details class="tool" ${dAttr(k)}><summary><span class="chip">
         <span class="g">${GLYPH[b.name] || '•'}</span>${esc(b.name || 'tool')}</span></summary>
         <div class="body"><code${tl ? ` class="language-${tl}"` : ''}>${esc(String(body))}</code></div>
         </details>`;
@@ -1192,10 +1206,10 @@ function itemHtml(item, live) {
       b.type === 'image' ? `<img src="/api/media/${esc(b.mediaId)}" loading="lazy">` : md(b.text || '')
     ).join('')}</div>`;
   // 툴 활동 — 접힘이 기본
-  const open = S.openActs.has(item.steps[0]?.seq);
-  return `<details class="act${live ? ' live' : ''}" data-seq="${item.steps[0]?.seq}" ${open ? 'open' : ''}>
+  const base = `${S.sessionId}|${item.steps[0]?.seq}`;
+  return `<details class="act${live ? ' live' : ''}" data-seq="${item.steps[0]?.seq}" ${dAttr(base)}>
     <summary><span class="spark"></span><span class="lbl">${esc(actLabel(item.steps, live))}</span></summary>
-    <div class="actbody">${item.steps.map(stepHtml).join('')}</div></details>`;
+    <div class="actbody">${item.steps.map((m, si) => stepHtml(m, base, si)).join('')}</div></details>`;
 }
 
 function zoom(src) {
@@ -1592,6 +1606,12 @@ $('#msgs').addEventListener('error', e => {
   note.className = 'meta';
   note.textContent = `이미지를 불러올 수 없음 · ${im.getAttribute('src') || ''}`;
   im.replaceWith(note);
+}, true);
+
+// <details> 열림/닫힘을 기억한다 — 리렌더가 DOM 을 갈아엎어도 사용자가 펼쳐 둔 건 그대로 둔다.
+$('#msgs').addEventListener('toggle', e => {
+  const d = e.target;
+  if (d.tagName === 'DETAILS' && d.dataset.k) S.det.set(d.dataset.k, d.open);
 }, true);
 
 // 다이어그램 바(코드 토글·복사)도 위임 — #msgs 는 스트리밍마다 다시 그려진다.

@@ -13,7 +13,7 @@ const SESS = [{id:'AAA',title:'대화 A',preview:'a',mtime:2,updatedAt:'2026-01-
 let failures = 0;
 const t = (name, cond) => { console.log(`  ${cond?'✓':'✗'} ${name}`); if(!cond) failures++; };
 
-async function boot(url, width){
+async function boot(url, width, msgs){
   const errs=[];
   const dom = new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true,
     beforeParse(w){
@@ -25,7 +25,7 @@ async function boot(url, width){
         json:async()=> u.includes('/api/sessions?') ? {items:SESS.map(x=>({...x})),nextCursor:null,total:2,matched:2}
           : u.includes('/messages') ? (u.includes('ZZZ')
               ? {messages:[],nextSeq:0,offset:0,running:false}
-              : {messages:[{seq:0,role:'user',blocks:[{type:'text',text:'hi'}]}],nextSeq:1,offset:10,running:false})
+              : {messages:msgs||[{seq:0,role:'user',blocks:[{type:'text',text:'hi'}]}],nextSeq:(msgs||[1]).length,offset:10,running:false})
           : u.includes('web-token') ? {token:'t'} : u.includes('health') ? {ok:true}
           : u.includes('font/list') ? {fonts:[]} : u.includes('/api/tabs') ? {tabs:[]} : {},
         text:async()=>''});
@@ -68,6 +68,25 @@ console.log('dead session deep link');
   await new Promise(r=>setTimeout(r,150));
   t('no JS errors', errs.length===0);
   t('URL replaced to /', w.location.pathname==='/'); }
+
+console.log('tool details keep open state across re-render');
+{ const MSGS=[{seq:0,role:'user',blocks:[{type:'text',text:'go'}]},
+    {seq:1,role:'assistant',blocks:[{type:'thinking',text:'plan\nmore'},{type:'toolCall',name:'repl',args:{code:'1+1'}}]},
+    {seq:2,role:'toolResult',toolName:'repl',blocks:[{type:'text',text:'2'}]}];
+  const {w,d,errs}=await boot('http://localhost/c/BBB',1400,MSGS);
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const act=()=>d.querySelector('#msgs details.act');
+  t('act pill rendered, collapsed', !!act() && !act().open);
+  act().open=true; await wait(30);
+  d.querySelector('#msgs details.tool').open=true; await wait(30);
+  w.eval('renderChat()'); w.eval('renderChat()'); await wait(30);
+  t('act stays open after re-render', act().open);
+  t('inner tool stays open after re-render', d.querySelector('#msgs details.tool').open);
+  t('untouched thinking stays closed', !d.querySelector('#msgs details.think').open);
+  d.querySelector('#msgs details.tool').open=false; await wait(30);
+  w.eval('renderChat()'); await wait(30);
+  t('user-closed tool stays closed', !d.querySelector('#msgs details.tool').open);
+  t('no JS errors', errs.length===0); }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
 process.exit(failures?1:0);
