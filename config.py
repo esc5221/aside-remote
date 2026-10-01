@@ -58,7 +58,12 @@ if not BEARER:
 
 # --- Aside paths -------------------------------------------------------
 ASIDE_BIN = str(Path(_env("ASIDE_BIN", str(HOME / ".local/bin/aside"))).expanduser())
-ASIDE_USER_DIR = Path(_env("ASIDE_USER_DIR", str(HOME / ".aside/u/0"))).expanduser()
+# CLI account id. Must match the user dir below (u0 -> ~/.aside/u/0) — a different
+# account makes the bridge look in the wrong place for sessions. Every CLI call
+# passes it explicitly; set it empty to leave the choice to the CLI.
+ASIDE_ACCOUNT = _env("ASIDE_ACCOUNT", "u0")
+ASIDE_USER_DIR = Path(_env("ASIDE_USER_DIR",
+                           str(HOME / ".aside/u" / (ASIDE_ACCOUNT.lstrip("u") or "0")))).expanduser()
 SESSIONS_DIR = ASIDE_USER_DIR / "sessions"
 # Attachments live here. The repl sandbox rejects paths outside
 # "Project and session roots", but the Aside user root is allowed (measured).

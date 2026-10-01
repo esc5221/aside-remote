@@ -59,6 +59,7 @@ class MCPClient:
         log.info("spawning `aside mcp` ...")
         self._proc = await asyncio.create_subprocess_exec(
             config.ASIDE_BIN, "mcp",
+            *(["--account", config.ASIDE_ACCOUNT] if config.ASIDE_ACCOUNT else []),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,

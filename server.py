@@ -355,6 +355,9 @@ async def api_run(payload: dict):
         model=payload.get("model"),
         effort=payload.get("effort"),
         speed=payload.get("speed"),
+        provider=payload.get("provider"),
+        permission=payload.get("permission"),
+        host=payload.get("host"),
     )
     if not run.session_id:
         raise HTTPException(502, run.error or "세션 시작 실패")
@@ -371,18 +374,25 @@ async def api_continue(session_id: str, payload: dict):
     existing = runner.get_run(session_id)
     if existing and existing.running:
         raise HTTPException(409, "이미 실행 중입니다")
-    run = await runner.continue_run(
-        session_id, prompt,
-        model=payload.get("model"),
-        effort=payload.get("effort"),
-        speed=payload.get("speed"),
-    )
+    # `aside session resume` takes no model/effort/speed options — the session
+    # keeps the settings it was created with.
+    run = await runner.continue_run(session_id, prompt)
     return JSONResponse({"sessionId": session_id, "running": run.running}, status_code=202)
 
 
 @app.post("/api/sessions/{session_id}/abort", dependencies=[Auth])
 async def api_abort(session_id: str):
-    return {"aborted": runner.abort(session_id)}
+    return {"aborted": await runner.abort(session_id)}
+
+
+@app.post("/api/sessions/{session_id}/steer", dependencies=[Auth])
+async def api_steer(session_id: str, payload: dict):
+    """실행 중인 스텝을 끊고 새 지시를 넣는다. mode=queue 면 현재 스텝 뒤에 붙인다."""
+    prompt = (payload.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+    fn = runner.queue if payload.get("mode") == "queue" else runner.steer
+    return {"ok": await fn(session_id, prompt)}
 
 
 # ------------------------------------------------------------------ 미디어
@@ -685,7 +695,10 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
             return
         try:
             run = await runner.start_run(prompt, model=msg.get("model"),
-                                         effort=msg.get("effort"), speed=msg.get("speed"))
+                                         effort=msg.get("effort"), speed=msg.get("speed"),
+                                         provider=msg.get("provider"),
+                                         permission=msg.get("permission"),
+                                         host=msg.get("host"))
         except Exception as exc:
             await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
             return
@@ -713,8 +726,7 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         _msgs, offset = sessions.read_messages(sid)
         await hub.subscribe(ws, sid, len(_msgs), offset)
         try:
-            run = await runner.continue_run(sid, prompt, model=msg.get("model"),
-                                            effort=msg.get("effort"), speed=msg.get("speed"))
+            run = await runner.continue_run(sid, prompt)
         except Exception as exc:
             await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
             return
@@ -725,7 +737,7 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
     if op == "abort":
         sid = msg.get("sessionId")
         await _send(ws, {"op": "abort.ok", "requestId": rid,
-                         "aborted": runner.abort(sid) if sid else False})
+                         "aborted": (await runner.abort(sid)) if sid else False})
         return
 
     if op == "tabs":

@@ -3,7 +3,8 @@
 문제의 뿌리 (2026-08-25 실측):
   · 데몬 레지스트리 = ~/.aside/u/0/state.db 의 sessions 테이블 (SQLite/WAL)
   · exec 로 만든 세션은 ephemeral=1 → 데몬 재시작 때 행이 퍼지된다
-  · 행이 없으면 `aside exec --session` 이 "Session not found" (exit 0!)
+  · 행이 없으면 `aside session resume` 이 "Session not found" (exit 0!)
+    (2026-09-09 CLI 개편 전 이름은 `aside exec --session` 이었다)
   · 대화 원본(messages.jsonl)은 디스크에 멀쩡히 남아 있다
 
 개입 두 가지 (둘 다 best-effort — 실패해도 실행을 막지 않는다):
