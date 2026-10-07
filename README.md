@@ -15,13 +15,16 @@ What you get:
 
 - **Chat UI** for your Aside agent — conversation list (search, paging), streaming
   answers with tool-activity folded into pills, image attachments (camera on phones),
-  markdown/code rendering, dark mode, Korean serif typography.
+  markdown/code rendering, Linear Dark styling, Wanted Sans typography.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
   work on any tab.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
 - Optional **push notification** (ntfy) when a run finishes.
 
 The UI language is currently Korean. PRs welcome.
+
+The app uses a fixed dark theme with compact spacing. [DESIGN.md](DESIGN.md)
+documents the Linear reference, local adaptations, tokens, and responsive rules.
 
 ## Requirements
 

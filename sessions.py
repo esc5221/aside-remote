@@ -1,7 +1,7 @@
-"""세션 읽기 — 데몬 무인증 엔드포인트 + messages.jsonl 파싱/추적.
+"""Session reads: authenticated Aside CLI status and messages.jsonl tracking.
 
 두 소스를 쓴다:
-  1) 127.0.0.1:21420/session/recents  — 무인증(publicPaths 하드코딩). 목록/제목/상태/비용.
+  1) aside session list — the CLI handles daemon authentication for live status.
   2) ~/.aside/u/0/sessions/<날짜>_<id>/messages.jsonl — 실시간으로 쌓이는 대화 원본.
      `aside exec` 는 중간 과정을 stdout 에 안 뱉는다. 스트리밍의 유일한 소스가 이 파일이다.
 """
@@ -255,10 +255,37 @@ async def tail_messages(session_id: str, start_offset: int = 0,
 
 
 # --------------------------------------------------------------------- 데몬 프록시
-async def daemon_recents(client: httpx.AsyncClient) -> list[dict]:
-    r = await client.get(f"{config.DAEMON_URL}/session/recents", timeout=10)
-    r.raise_for_status()
-    return r.json()
+async def live_sessions() -> list[dict]:
+    args = [config.ASIDE_BIN, "session", "list"]
+    if config.ASIDE_ACCOUNT:
+        args += ["--account", config.ASIDE_ACCOUNT]
+    proc = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+    except (TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+        raise
+    if proc.returncode != 0:
+        raise RuntimeError("Aside session list failed")
+    text = out.decode("utf-8", "replace").strip()
+    if text == "No sessions.":
+        return []
+    items = []
+    for line in text.splitlines():
+        match = re.fullmatch(r"([A-Za-z0-9]{12,32})  (\S+)  (ephemeral|persistent)  (.*?)  (\S+)", line)
+        if not match:
+            raise RuntimeError("Unrecognized Aside session list output")
+        sid, status, kind, title, updated = match.groups()
+        items.append({"id": sid, "status": status, "ephemeral": kind == "ephemeral",
+                      "title": title, "updatedAt": updated})
+    return items
 
 
 def _texts(node) -> list[str]:
@@ -306,7 +333,7 @@ async def session_status(client: httpx.AsyncClient, session_id: str) -> str | No
     ts, cache = _status_cache
     if time.time() - ts > 2.0:
         try:
-            raw = await daemon_recents(client)
+            raw = await live_sessions()
             cache = {s.get("id"): s.get("status") for s in raw}
             _status_cache = (time.time(), cache)
         except Exception:
@@ -368,8 +395,12 @@ def _get_index(force: bool = False) -> list[tuple[int, str, int, Path | None]]:
 
 def invalidate_index() -> None:
     """실행 시작/종료처럼 목록이 즉시 바뀌어야 할 때 캐시를 버린다."""
-    global _index_at
+    global _index_at, _dir_index_at, _status_cache
     _index_at = 0.0
+    _meta.clear()
+    _dir_index.clear()
+    _dir_index_at = 0.0
+    _status_cache = (0.0, {})
 
 
 def _clean(t: str) -> str:
@@ -472,7 +503,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
 
     live: dict[str, dict] = {}
     try:
-        for s in await daemon_recents(client):
+        for s in await live_sessions():
             if s.get("id"):
                 live[s["id"]] = s
     except Exception:
@@ -481,7 +512,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
     # 방금 시작해 messages.jsonl 이 아직 없는 세션은 디스크에 안 보인다 → recents 로 메운다.
     known = {r[1] for r in rows}
     ghosts = [(_epoch_ns(s.get("updatedAt")) or time.time_ns(), sid, 0, None)
-              for sid, s in live.items() if sid not in known]
+              for sid, s in live.items() if sid not in known and not s.get("ephemeral")]
     if ghosts:
         rows = sorted(rows + ghosts, key=lambda r: (-r[0], r[1]))
 

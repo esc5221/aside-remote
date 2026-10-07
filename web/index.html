@@ -9,8 +9,8 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-title" content="Aside">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#0f1011">
+<link id="fontcss" rel="stylesheet" href="/api/font/css/wanted-sans">
 <script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/vendor/lang-kotlin.min.js"></script>
 <script defer src="/vendor/lang-swift.min.js"></script>
@@ -23,49 +23,38 @@
 <style>
 /* 안드로이드 앱과 같은 웜뉴트럴 팔레트. 라이트가 기본, 다크는 시스템 설정을 따른다. */
 :root{
+  /* DESIGN.md owns the current theme; earlier palette notes are historical. */
+  color-scheme:dark;
   /* 라이트 — claude.ai 계열 웜뉴트럴 */
-  --bg:#faf9f7; --surface:#fff; --surface2:#f0eee9; --composer:#fff;
-  --text:#1f1e1d; --dim:#5c594f; --faint:#8b8781;
-  --line:#e6e3dc; --line2:#efece6;
-  --bubble:rgba(0,0,0,.045); --code-bg:#f7f5f1; --code-fg:#26251f; --code-line:#e2dfd7;
-  --sbar:rgba(31,30,29,.17); --sbar-hi:rgba(31,30,29,.32);
-  --code-bar:#efece6; --code-dim:#8b8781;
-  --c-comment:#8b8781; --c-key:#a4432a; --c-str:#4d7a3c; --c-num:#8a6420;
-  --c-fn:#2f6690; --c-type:#8a6420; --c-attr:#7a4a8a; --c-meta:#6f6b64;
-  --accent:#c96442; --accent-dim:#8f4429;
-  --err:#b3261e; --ok:#4fa96a; --warn:#c08a2e;
+  --bg:#0f1011; --surface:#141516; --surface2:#191a1b; --composer:var(--surface2);
+  --text:#f7f8f8; --dim:#d0d6e0; --faint:#8a8f98;
+  --line:#34343a; --line2:#23252a;
+  --bubble:var(--surface2); --code-bg:var(--bg); --code-fg:var(--text); --code-line:var(--line2);
+  --sbar:rgba(138,143,152,.28); --sbar-hi:rgba(138,143,152,.48);
+  --code-bar:var(--surface2); --code-dim:var(--faint);
+  --c-comment:var(--faint); --c-key:#a6a4f4; --c-str:#9cc8a2; --c-num:#d9b779;
+  --c-fn:#8ab8d8; --c-type:var(--c-num); --c-attr:#c8a4d7; --c-meta:var(--dim);
+  --accent:#5e6ad2; --accent-hover:#828fff; --accent-dim:var(--accent-hover);
+  --err:#e5484d; --ok:#30a46c; --warn:#d9a54e;
+  --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
+  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px;
+  --sidebar:300px; --touch-target:44px;
   --col:768px;          /* 메시지 컬럼 폭 = claude max-w-3xl */
-  --colpad:16px;        /* px-4 */
+  --colpad:var(--space-md);        /* px-4 */
   --composer-col:808px; /* claude max-w-[50.5rem] */
-  --composer-pad:20px;  /* md:px-5 */
+  --composer-pad:var(--space-lg);  /* md:px-5 */
   /* 본문 폰트. 설정에서 교체한다.
      윈도우엔 쓸 만한 한글 세리프가 없어(한글이 바탕체로 떨어진다) 웹폰트가 유일한 해결책이다. */
-  --font-body:"Gowun Batang", ui-serif, Georgia, "Apple SD Gothic Neo", serif;
-  --font-ui:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
-            "Segoe UI", Roboto, sans-serif;
+  --font-body:"Wanted Sans Variable", "Wanted Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui:var(--font-body);
   /* 네이티브 앱(edge-to-edge)에서 시스템 바 뒤까지 웹뷰가 확장된다 → 실제 여백은 여기서 온다 */
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bottom:env(safe-area-inset-bottom,0px);
   --safe-left:env(safe-area-inset-left,0px);
   --safe-right:env(safe-area-inset-right,0px);
 }
-@media (prefers-color-scheme: dark){
-  :root{
     /* claude.ai 다크 실측: 배경 rgb(21,21,21) · 컴포저 rgb(32,32,31)
        · 본문 rgb(240,239,236) · 보조 hsl(55 9% 74%) · 말풍선 rgba(255,255,255,.05) */
-    --bg:#151515; --surface:#1c1c1b; --surface2:#232322; --composer:#20201f;
-    --text:#f0efec; --dim:#c1bfb6; --faint:#8d8a82;
-    --line:#2e2e2c; --line2:#242423;
-    --bubble:rgba(255,255,255,.05); --code-bg:#111110; --code-fg:#e6e4de; --code-line:#2a2a28;
-    --sbar:rgba(240,239,236,.20); --sbar-hi:rgba(240,239,236,.36);
-    --code-bar:#1a1a19; --code-dim:#7f7b73;
-    --c-comment:#6f6b64; --c-key:#e08161; --c-str:#9ec27f; --c-num:#d9b06a;
-    --c-fn:#7fb3d5; --c-type:#d9b06a; --c-attr:#c9a5d8; --c-meta:#a8a49c;
-    --accent:#e08161; --accent-dim:#e08161;
-    --err:#f2b8b5; --ok:#4fa96a; --warn:#e0a03c;
-  }
-  #composerCard{border-color:transparent}
-}
 *{box-sizing:border-box}
 html,body{height:100%}
 /* 키보드가 올라오며 리사이즈될 때 드러나는 창 배경이 흰색으로 번쩍이지 않게 */
@@ -73,17 +62,19 @@ html{background:var(--bg)}
 body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
 body{
   margin:0; background:var(--bg); color:var(--text);
-  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",
-       "Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  font:14px/1.5 var(--font-ui);
   -webkit-font-smoothing:antialiased;
 }
 button,input,textarea{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
-a{color:#3b7dd8}
+a{color:var(--accent-hover)}
+button,input,textarea,a,summary{transition:background-color .1s,border-color .1s,color .1s}
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---------- 레이아웃: 넓으면 2열, 좁으면 1열 ---------- */
-#app{display:grid;grid-template-columns:340px 1fr;height:100vh;height:100dvh;overflow:hidden}
-#side{border-right:1px solid var(--line2);display:flex;flex-direction:column;min-width:0;min-height:0}
+#app{display:grid;grid-template-columns:var(--sidebar) 1fr;height:100vh;height:100dvh;overflow:hidden}
+#side{background:var(--surface);border-right:1px solid var(--line2);display:flex;flex-direction:column;min-width:0;min-height:0}
 #main{display:flex;flex-direction:column;min-width:0;min-height:0}
 /* 모바일: 대화가 기본 화면이고 목록은 햄버거로 여는 드로어다.
    예전엔 "데이터가 있나"로 사이드바/대화를 갈랐는데, 새 대화는 데이터가 없어서
@@ -94,17 +85,17 @@ a{color:#3b7dd8}
    340px 폭에 구겨진다. 트랙 자체를 0 으로 접는다 (grid-template-columns 는 애니메이션 가능).
    접히는 동안 내용이 리플로우로 우그러지지 않게 자식 폭을 340px 로 고정하고 옆으로 잘려나가게 한다. */
 @media (min-width:821px){
-  #app{transition:grid-template-columns .22s cubic-bezier(.32,.72,0,1)}
+  #app{transition:grid-template-columns .15s cubic-bezier(.32,.72,0,1)}
   #side{overflow:hidden}
-  #side > *{min-width:340px}
+  #side > *{min-width:var(--sidebar)}
   body.sbhide #app{grid-template-columns:0px 1fr}
   body.sbhide #side{border-right:0;visibility:hidden;transition:visibility 0s .25s}
 }
 @media (max-width:820px){
   #app{grid-template-columns:1fr}
   #side{position:fixed;top:0;bottom:0;left:0;z-index:40;
-        width:min(86vw,330px);background:var(--bg);border-right:1px solid var(--line2);
-        transform:translateX(-100%);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+        width:min(86vw,var(--sidebar));background:var(--surface);border-right:1px solid var(--line2);
+        transform:translateX(-100%);transition:transform .15s cubic-bezier(.32,.72,0,1)}
   body.drawer #side{transform:none;box-shadow:0 0 44px rgba(0,0,0,.45)}
   #scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.45);
          opacity:0;pointer-events:none;transition:opacity .22s}
@@ -113,20 +104,28 @@ a{color:#3b7dd8}
 }
 
 /* ---------- 헤더 ---------- */
-.hd{display:flex;align-items:center;gap:10px;min-height:56px;flex:0 0 auto;
-    padding:calc(12px + var(--safe-top)) 14px 12px}
+.hd{display:flex;align-items:center;gap:var(--space-sm);min-height:48px;flex:0 0 auto;
+    padding:calc(6px + var(--safe-top)) calc(var(--space-md) + var(--safe-right))
+            6px calc(var(--space-md) + var(--safe-left));border-bottom:1px solid var(--line2)}
 #side .hd{border-bottom:1px solid var(--line2)}
-.hd h1{margin:0;font-size:20px;line-height:1.2;font-weight:600;font-family:var(--font-body)}
+.hd h1{margin:0;font-size:18px;line-height:1.2;font-weight:600;font-family:var(--font-body)}
 .hd .sub{font-size:11px;color:var(--faint)}
 .hd .sp{flex:1}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--err);flex:0 0 auto}
 .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
-.ico{padding:6px 8px;border-radius:8px;color:var(--dim);font-size:15px}
+.ico{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;
+     padding:4px 6px;border-radius:var(--radius-sm);color:var(--dim);font-size:15px}
 .ico:hover{background:var(--surface2)}
+.browser-preview-btn{white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.browser-preview-btn:disabled{opacity:.5;cursor:default}
+@media (max-width:480px){
+  .browser-preview-label{display:none}
+  .browser-preview-btn{padding:0;justify-content:center;min-width:var(--touch-target)}
+}
 
 /* ---------- 탭바 ---------- */
-.segs{display:flex;gap:4px;padding:8px 12px 4px}
-.seg{padding:6px 12px;border-radius:16px;font-size:13px;color:var(--dim);border:1px solid transparent}
+.segs{display:flex;gap:var(--space-xs);padding:var(--space-sm) var(--space-md) var(--space-xs)}
+.seg{padding:4px 10px;border-radius:var(--radius-sm);font-size:13px;color:var(--faint);border:1px solid transparent}
 @media (hover:none){
   .seg{padding:9px 14px;font-size:14px}
   .ico{padding:9px 10px}
@@ -162,33 +161,38 @@ a{color:#3b7dd8}
 }
 /* 오른쪽 여백이 1px 인 건 스크롤바가 11px 를 점유하기 때문이다 (합쳐서 왼쪽 12px 와 맞는다).
    안전영역은 좌우가 서로 바뀌어 있던 걸 바로잡았다 — 노치 폰 가로모드에서 반대편에 붙었다. */
-#list{padding:0 calc(1px + var(--safe-right)) var(--safe-bottom) calc(12px + var(--safe-left));
+#list{padding:0 calc(var(--space-md) + var(--safe-right)) var(--safe-bottom) calc(var(--space-md) + var(--safe-left));
       overflow-x:hidden;-webkit-overflow-scrolling:touch}
 /* 터치 기기는 막대 폭이 0 이라 보정이 필요 없다.
    #list 와 특이도가 같으므로 반드시 이 아래에 와야 이긴다. */
 @media (hover:none){ #list{padding-right:calc(12px + var(--safe-right))} }
 #chatScroll{display:flex;flex-direction:column}
-.card{display:block;width:100%;text-align:left;background:var(--surface);border-radius:12px;
-      padding:12px;margin:6px 0;border:1px solid transparent}
+.card{display:flex;width:100%;text-align:left;background:var(--surface2);border-radius:var(--radius-md);
+      margin:var(--space-xs) 0;border:1px solid transparent}
 .card:hover{border-color:var(--line)}
 .card.on{border-color:var(--accent)}
-.card .t{font-weight:600;font-size:14px;display:flex;align-items:center;gap:7px;min-width:0}
+.card-open{flex:1;min-width:0;text-align:left;padding:var(--space-sm);border-radius:var(--radius-md)}
+.session-delete{align-self:flex-start;flex:0 0 36px;height:36px;margin:5px 5px 0 0;
+                border-radius:8px;color:var(--faint)}
+.session-delete:hover{color:var(--err);background:var(--surface2)}
+.session-delete:disabled{opacity:.35;cursor:default}
+.card .t{font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;min-width:0}
 .card .t span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .p{font-size:12px;color:var(--dim);margin-top:4px;overflow-wrap:anywhere;
          display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.card .m{font-size:11px;color:var(--faint);margin-top:5px;display:flex;gap:10px}
+.card .m{font-size:11px;color:var(--faint);margin-top:var(--space-xs);display:flex;gap:var(--space-sm)}
 .unread{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:0 0 auto}
 
 /* 목록: 검색 · 날짜 그룹 · 더보기.
    1000건을 한 번에 스크롤시키지 않는다 — 30건씩 명시적으로 불러온다.
    무한스크롤 대신 버튼인 이유: 스크롤 위치가 튀지 않고, 언제 끝났는지 사용자가 안다. */
-.lsearch{position:sticky;top:0;z-index:2;background:var(--bg);padding:8px 0 6px}
+.lsearch{position:sticky;top:0;z-index:2;background:var(--surface);padding:6px 0}
 .lsearch input{width:100%;background:var(--surface);border:1px solid var(--line);
-      border-radius:10px;padding:9px 11px;font-size:13px;color:var(--text);outline:none;
+      border-radius:var(--radius-sm);padding:7px 10px;font-size:13px;color:var(--text);outline:none;
       -webkit-appearance:none}
 .lsearch input:focus{border-color:var(--accent)}
 .grp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.02em;
-     padding:14px 4px 2px}
+     padding:var(--space-md) var(--space-xs) 2px}
 .grp:first-child{padding-top:4px}
 .more{display:block;width:100%;margin:10px 0 4px;padding:12px;border-radius:10px;
       background:var(--surface);border:1px solid var(--line);color:var(--dim);font-size:13px}
@@ -201,33 +205,33 @@ a{color:#3b7dd8}
 /* 컬럼 폭: claude 는 메시지 max-w-3xl(768) + px-4, 컴포저 max-w-[50.5rem](808) + px-5.
    두 값이 만나 카드 폭이 정확히 메시지 컬럼과 맞물린다. 그 관계를 그대로 옮겼다. */
 #msgs{width:100%;max-width:var(--col);margin:0 auto;
-      padding:20px calc(var(--colpad) + var(--safe-right)) 0 calc(var(--colpad) + var(--safe-left));
+      padding:var(--space-lg) calc(var(--colpad) + var(--safe-right)) 0 calc(var(--colpad) + var(--safe-left));
       display:flex;flex-direction:column;min-width:0;flex:1 0 auto}
 /* 턴 간격: claude 는 user→asst 52px, asst→user 68px. 여긴 툴 블록이 끼어드니 그보다 촘촘하게. */
 #msgs > *{margin-top:7px}
 .turn{display:flex;flex-direction:column;align-items:stretch}
 .turn > * + *{margin-top:7px}
-#msgs > .user{margin-top:34px}
-#msgs > .user + *{margin-top:20px}
+#msgs > .user{margin-top:24px}
+#msgs > .user + *{margin-top:var(--space-lg)}
 #msgs > :first-child{margin-top:0}
 
 .user{align-self:flex-end;max-width:min(88%,620px);background:var(--bubble);
-      border-radius:12px;padding:12px 16px;font-size:15px;line-height:20px;
+      border-radius:var(--radius-md);padding:var(--space-sm) var(--space-md);font-size:14px;line-height:20px;
       white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
 .user.pending{opacity:.5}
 /* 어시스턴트는 말풍선 없음. 본문은 세리프. (claude: anthropic-serif 16px / 1.65) */
 .asst{max-width:100%;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere;
-      font-family:var(--font-body);font-size:16px;line-height:1.65}
-.asst p{margin:0 0 10px}
+      font-family:var(--font-body);font-size:15px;line-height:1.6}
+.asst p{margin:0 0 var(--space-sm)}
 .asst p:last-child{margin-bottom:0}
 .asst h1,.asst h2,.asst h3{margin:16px 0 6px;font-weight:600;line-height:1.35}
 .asst h1{font-size:20px}.asst h2{font-size:18px}.asst h3{font-size:16px}
-.asst ul,.asst ol{margin:2px 0 10px;padding-left:24px}
+.asst ul,.asst ol{margin:2px 0 var(--space-sm);padding-left:20px}
 .asst li > ul,.asst li > ol{margin:3px 0}   /* 중첩 리스트는 아래 여백을 빼서 li 안에 밀착 */
 .asst li{margin:3px 0}
 .asst img{max-width:100%;border-radius:10px;background:var(--surface2);display:block;
           margin:8px 0;cursor:zoom-in}
-.asst code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
+.asst code{font-family:var(--font-ui);font-size:13.5px;
            background:var(--surface2);padding:1px 5px;border-radius:5px}
 .asst hr{border:0;border-top:1px solid var(--line2);margin:14px 0}
 .asst blockquote{margin:8px 0;padding:2px 0 2px 14px;border-left:2px solid var(--line);
@@ -235,11 +239,11 @@ a{color:#3b7dd8}
 .asst blockquote p:last-child{margin-bottom:0}
 .asst table{border-collapse:collapse;margin:8px 0;font-size:14px;display:block;
             overflow-x:auto;max-width:100%;font-family:inherit}
-.asst th,.asst td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.asst th,.asst td{border:1px solid var(--line2);padding:5px var(--space-sm);text-align:left;vertical-align:top}
 .asst th{background:var(--surface2);font-weight:600;white-space:nowrap}
 
 /* 코드블록: 절대배치 라벨 대신 헤더바를 따로 둔다 (본문과 겹치지 않게) */
-.codewrap{margin:10px 0;border:1px solid var(--code-line);border-radius:10px;overflow:hidden;
+.codewrap{margin:var(--space-sm) 0;border:1px solid var(--code-line);border-radius:var(--radius-md);overflow:hidden;
           background:var(--code-bg)}
 .codebar{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 13px;
          background:var(--code-bar);border-bottom:1px solid var(--code-line);
@@ -249,7 +253,7 @@ a{color:#3b7dd8}
 .codebar .cp{font-size:10.5px;color:var(--code-dim);padding:3px 8px;border-radius:6px;
              border:1px solid transparent}
 .codebar .cp:hover{background:var(--code-line);color:var(--code-fg)}
-pre.code{margin:0;padding:13px;overflow-x:auto;background:none}
+pre.code{margin:0;padding:10px;overflow-x:auto;background:none}
 .mmd{margin:8px 0;max-width:100%;border-radius:12px;overflow:hidden}
 .mmd svg{max-width:100%;height:auto;display:block;margin:0 auto}
 .mmd foreignObject{overflow:visible}   /* 측정이 1~2px 어긋나는 폰트에서도 글자를 안 자른다 */
@@ -271,7 +275,7 @@ pre.code{margin:0;padding:13px;overflow-x:auto;background:none}
 .mmd .mmdsrc{margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;
              background:var(--code-bg);padding:12px 13px;color:var(--code-fg)}
 pre.code code{background:none;padding:0;color:var(--code-fg);
-              font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+              font-family:var(--font-ui);
               font-size:13px;line-height:1.62;tab-size:2}
 
 /* hljs 테마 — 앱 팔레트에 맞춰 직접 짠 것 (배포판 테마를 쓰면 톤이 튄다) */
@@ -308,7 +312,7 @@ details.tool .body code,details.res .body code{background:none;padding:0;color:i
 details.tool .body,details.res .body{background:var(--code-bg);color:var(--code-fg);
       border:1px solid var(--code-line);border-radius:8px;
       padding:10px 12px;margin:5px 0;overflow:auto;max-height:340px;
-      font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;
+      font-family:var(--font-ui);font-size:11.5px;line-height:1.55;white-space:pre-wrap;
       word-break:break-word}
 details.res summary{color:var(--dim)}
 details.res.err summary{color:var(--err)}
@@ -329,20 +333,19 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
              background:linear-gradient(to bottom,
                rgba(0,0,0,0) 0, var(--bg) 30px, var(--bg) 100%)}
 #composer{width:100%;max-width:var(--composer-col);margin:0 auto;pointer-events:auto;
-          padding:0 calc(var(--composer-pad) + var(--safe-left)) calc(16px + var(--safe-bottom))
-                    calc(var(--composer-pad) + var(--safe-right))}
+          padding:0 calc(var(--composer-pad) + var(--safe-right)) calc(var(--space-md) + var(--safe-bottom))
+                    calc(var(--composer-pad) + var(--safe-left))}
 #composerCard{display:flex;flex-direction:column;gap:6px;background:var(--composer);
-              border:1px solid var(--line);border-radius:28px;padding:10px 10px 10px 10px;
-              box-shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -12px rgba(0,0,0,.28);
+              border:1px solid var(--line);border-radius:var(--radius-lg);padding:var(--space-sm);
               transition:border-color .15s}
-#composerCard:focus-within{border-color:var(--line)}
+#composerCard:focus-within{border-color:var(--accent)}
 /* 버튼과 같은 높이(36px)를 갖고, 한 줄일 때 글자가 세로 중앙에 오도록 (36-22)/2=7px */
 .crow{display:flex;gap:8px;align-items:flex-end}
 #draft{flex:1;resize:none;background:none;border:0;outline:none;
-       padding:7px 0;max-height:180px;min-height:36px;
-       font-size:15px;line-height:22px;color:var(--text)}
+       padding:7px 0;max-height:180px;min-height:36px;min-width:0;
+       font-size:14px;line-height:22px;color:var(--text)}
 /* ＋ 도 전송 버튼과 같은 36px 원 — 좌우 대칭이 맞아야 통일감이 산다 */
-#attach{width:36px;height:36px;border-radius:18px;flex:0 0 auto;
+#attach{width:36px;height:36px;border-radius:var(--radius-md);flex:0 0 auto;
         display:grid;place-items:center;font-size:19px;line-height:1;
         color:var(--dim);background:var(--surface2);transition:color .15s,background .15s}
 #attach:hover{color:var(--text)}
@@ -358,56 +361,93 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
 .user .atts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
 .user .atts img{width:96px;height:96px;object-fit:cover;border-radius:9px;cursor:zoom-in;display:block}
 #draft::placeholder{color:var(--faint)}
-#send{width:36px;height:36px;border-radius:18px;background:var(--accent);color:#fff;
+#send{width:36px;height:36px;border-radius:var(--radius-md);background:var(--accent);color:#fff;
       display:grid;place-items:center;font-size:14px;flex:0 0 auto;transition:opacity .15s}
-#send:hover{opacity:.88}
+#send:hover{background:var(--accent-hover)}
 #send.stop{background:var(--surface2);color:var(--dim)}
 
 .working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:13px;
          font-family:var(--font-ui)}
 
 /* ---------- 탭 ---------- */
-.tabrow{display:flex;gap:11px;align-items:center;background:var(--surface);border-radius:11px;
-        padding:9px;margin:6px 0;width:100%;text-align:left;border:1px solid transparent}
+.tabrow{display:flex;gap:var(--space-sm);align-items:center;background:var(--surface2);border-radius:var(--radius-md);
+        padding:var(--space-sm);margin:var(--space-xs) 0;width:100%;text-align:left;border:1px solid transparent}
 .tabrow:hover{border-color:var(--line)}
-.thumb{width:88px;height:56px;border-radius:7px;background:var(--surface2);object-fit:cover;flex:0 0 auto}
-.fav{width:88px;height:56px;border-radius:7px;background:var(--surface2);display:grid;place-items:center;flex:0 0 auto}
+.thumb{width:72px;height:48px;border-radius:var(--radius-sm);background:var(--surface);object-fit:cover;flex:0 0 auto}
+.fav{width:72px;height:48px;border-radius:var(--radius-sm);background:var(--surface);display:grid;place-items:center;flex:0 0 auto}
 .fav img{width:18px;height:18px}
-.tabrow .t{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tabrow .t{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tabrow .h{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0}
 .tabrow .h span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tabrow .h i{width:5px;height:5px;border-radius:50%;background:#9a968e;flex:0 0 auto}
+.tabrow .h i{width:5px;height:5px;border-radius:50%;background:var(--faint);flex:0 0 auto}
 .tabrow .h i.live{background:var(--ok)}
 .searchbar{display:flex;gap:8px;padding:6px 0}
-.searchbar input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;
-                 padding:8px 14px;outline:none}
+.searchbar input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
+                 padding:7px 10px;outline:none}
 
 /* ---------- 시트 / 모달 ---------- */
-.mask{position:fixed;inset:0;background:#0008;display:grid;place-items:center;padding:20px;z-index:50}
-.sheet{background:var(--surface);border-radius:16px;padding:18px;max-width:700px;width:100%;
-       max-height:88vh;overflow:auto}
-.sheet h3{margin:0 0 4px;font-size:16px}
-.sheet .url{font-size:11px;color:var(--faint);word-break:break-all;margin-bottom:10px}
-.sheet img.shot{width:100%;border-radius:10px;background:var(--surface2);margin-bottom:10px}
-.sheet textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
-                padding:10px;min-height:70px;resize:vertical;outline:none}
+dialog.mask{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;
+            margin:0;padding:12px max(12px,var(--safe-right)) max(12px,var(--safe-bottom))
+            max(12px,var(--safe-left));border:0;background:transparent;color:var(--text);
+            display:flex;align-items:flex-end;justify-content:center;z-index:50}
+dialog.mask:not([open]){display:none}
+dialog.mask::backdrop{background:#0008}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);
+       width:min(960px,100%);max-height:calc(100dvh - max(24px,var(--safe-top)) -
+       max(12px,var(--safe-bottom)));display:flex;flex-direction:column;overflow:hidden;
+       box-shadow:0 -12px 48px rgba(0,0,0,.28)}
+.sheet-grip{width:42px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 2px}
+.sheet-head{display:flex;align-items:flex-start;gap:var(--space-sm);padding:var(--space-sm) var(--space-md);border-bottom:1px solid var(--line2)}
+.sheet-title{min-width:0;flex:1}
+.sheet h3{margin:0 0 3px;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet .url{font-size:11px;color:var(--faint);word-break:break-all}
+.sheet-scroll{overflow:auto;padding:var(--space-md) var(--space-md) calc(var(--space-md) + var(--safe-bottom));min-height:0}
+.preview-frame{position:relative;min-height:180px;display:grid;place-items:center;background:var(--surface2);
+               border:1px solid var(--line2);border-radius:var(--radius-md);overflow:hidden}
+.preview-frame img.shot{display:block;width:100%;height:auto;max-height:58dvh;object-fit:contain;background:var(--surface2)}
+.preview-frame img.shot[hidden]{display:none}
+.preview-placeholder{padding:44px 20px;text-align:center;color:var(--faint);font-size:13px}
+.preview-status{display:flex;align-items:center;gap:7px;min-height:22px;margin:8px 2px 2px;
+                color:var(--faint);font-size:11px}
+.preview-status.error{color:var(--err)}
+.preview-tools{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+.preview-tools .btn[aria-pressed="true"]{background:var(--surface2);color:var(--text)}
+.preview-tools + textarea{margin-top:10px}
+.sheet-dismiss{flex:0 0 var(--touch-target);width:var(--touch-target);height:var(--touch-target);border-radius:var(--radius-md);color:var(--dim);
+               font-size:20px;line-height:1}
+.sheet-dismiss:hover{background:var(--surface2)}
+.sheet textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius-md);
+                padding:var(--space-sm);min-height:64px;resize:vertical;outline:none}
+.sheet textarea:focus,.btn:focus-visible,.ico:focus-visible,.sheet-dismiss:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.btn{border:1px solid var(--line);border-radius:18px;padding:7px 14px;font-size:13px;color:var(--dim)}
+.btn{border:1px solid var(--line);border-radius:var(--radius-md);padding:6px var(--space-md);font-size:13px;color:var(--dim)}
 .btn:hover{background:var(--surface2)}
+.sheet .btn{min-height:var(--touch-target)}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:var(--accent-hover)}
+.btn.danger{color:var(--err);border-color:var(--err)}
+#deleteDialog{color:var(--text);background:var(--surface);border:1px solid var(--line);
+              border-radius:var(--radius-lg);padding:var(--space-lg);width:min(420px,calc(100vw - 32px));
+              max-height:calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));overflow:auto}
+#deleteDialog::backdrop{background:#0008}
+#deleteDialog h3{margin:0;font-size:17px}
+#deleteTitle{overflow-wrap:anywhere;font-weight:600}
+#deleteError{color:var(--err)}
+#deleteDialog button:disabled{opacity:.5;cursor:default}
 .zoom{position:fixed;inset:0;background:#000d;display:grid;place-items:center;z-index:60;cursor:zoom-out}
 .zoom img{max-width:96vw;max-height:96vh}
 
 /* ---------- 설정 / 기타 ---------- */
-.pad{padding:16px 2px}
+.pad{padding:var(--space-md) 2px}
 .field{margin-bottom:10px}
 .field label{display:block;font-size:11px;color:var(--faint);margin-bottom:4px}
 .field input{width:100%;background:var(--surface);border:1px solid var(--line);
-             border-radius:10px;padding:9px 12px;outline:none}
+             border-radius:var(--radius-md);padding:7px 10px;outline:none}
 .empty{padding:40px 24px;text-align:center;color:var(--faint);font-size:13px}
-.fontgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.fontgrid{display:grid;grid-template-columns:1fr;gap:7px}
 .fontbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
-         padding:10px 12px;border-radius:10px;font-size:15px;color:var(--text);text-align:left}
+         padding:var(--space-sm) 10px;border-radius:var(--radius-md);font-size:14px;color:var(--text);text-align:left}
 .fontbtn.on{border-color:var(--accent);color:var(--accent)}
 .fontbtn .fk{font-family:var(--font-ui);font-size:10px;color:var(--faint);font-weight:500}
 .hint{font-size:11px;color:var(--faint);line-height:1.5;margin-top:7px;font-family:var(--font-ui)}
@@ -417,6 +457,26 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
       border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:12px}
+@media (max-width:820px), (hover:none){
+  .hd{min-height:56px}
+  .ico,.seg,.btn,.session-delete,.more,.fontbtn,details summary,.codebar .cp,.mmd .mmdbar button{
+    min-height:var(--touch-target)}
+  .seg,.codebar .cp,.mmd .mmdbar button{min-width:var(--touch-target)}
+  .ico{min-width:var(--touch-target)}
+  .session-delete{flex-basis:var(--touch-target);height:var(--touch-target);margin:2px 2px 0 0}
+  #attach,#send{width:var(--touch-target);height:var(--touch-target)}
+  #draft{min-height:var(--touch-target);padding:11px 0}
+  .lsearch input,.searchbar input,.field input{min-height:var(--touch-target)}
+  .att .x{width:var(--touch-target);height:var(--touch-target);line-height:var(--touch-target);border-radius:var(--radius-sm)}
+}
+@media (hover:none){
+  .lsearch input,.searchbar input,.field input,.sheet textarea,#draft{font-size:16px}
+  .card{padding:0}
+  .tabrow{padding:var(--space-sm)}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
 </style>
 </head>
 <body>
@@ -444,7 +504,9 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
         <div id="chatTitle" style="font-weight:600;font-size:15px;overflow:hidden;
              text-overflow:ellipsis;white-space:nowrap">새 대화</div>
       </div>
-      <div class="sp"></div>
+      <button class="btn browser-preview-btn" id="browserPreview" title="현재 브라우저 탭 미리보기" aria-label="브라우저 미리보기">
+        <span aria-hidden="true">▣</span><span class="browser-preview-label">브라우저 미리보기</span>
+      </button>
       <button class="ico" id="newChat" title="새 대화">+</button>
     </div>
     <div class="scroll" id="chatScroll">
@@ -470,9 +532,21 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
   </section>
 </div>
 
+<dialog id="deleteDialog" aria-labelledby="deleteHeading" aria-describedby="deleteWarning">
+  <h3 id="deleteHeading">대화를 삭제할까요?</h3>
+  <p id="deleteTitle"></p>
+  <p id="deleteWarning">Aside의 원본 대화와 대화에 저장된 파일도 삭제해요. 되돌릴 수 없어요.</p>
+  <p id="deleteError" role="alert" hidden></p>
+  <div class="acts">
+    <button class="btn" id="deleteCancel" autofocus>취소</button>
+    <button class="btn danger" id="deleteConfirm">삭제</button>
+  </div>
+</dialog>
+
 <script>
 'use strict';
 // ─────────────────────────────────────────────── 상태
+const APP_FONT = 'wanted-sans';
 const S = {
   token: localStorage.getItem('token') || '',
   view: 'chats',
@@ -480,9 +554,10 @@ const S = {
   sessionId: null, running: false, pending: null,
   nextSeq: 0, offset: 0,
   health: null, wsOpen: false, err: null, listErr: null,
+  deletingId: null,
   q: '', liveOnly: false, det: new Map(),   // details 열림/닫힘 기억 (key → bool)
   sq: '', loadedQ: null, cursor: null, total: 0, matched: 0, loadingMore: false,
-  font: localStorage.getItem('font') || 'gowun-batang', fonts: [],
+  font: APP_FONT, fonts: [],
   atts: [],
 };
 const $ = s => document.querySelector(s);
@@ -537,7 +612,7 @@ function ensureFontPreviews() {
 
 async function loadFonts() {
   try {
-    S.fonts = (await (await fetch('/api/font/list')).json()).fonts || [];
+    S.fonts = ((await (await fetch('/api/font/list')).json()).fonts || []).filter(f => f.id === APP_FONT);
     applyFont(S.font);
   } catch {}
 }
@@ -683,16 +758,15 @@ function mmdLoad() {
   mmdLib = new Promise(res => {
     const sc = document.createElement('script');
     sc.src = '/vendor/mermaid.min.js';
-    sc.onload = () => {
-      const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    sc.onload = async () => {
+      await document.fonts.ready;
       window.mermaid.initialize({
         startOnLoad: false, securityLevel: 'strict',
-        theme: dark ? 'dark' : 'neutral',
+        theme: 'dark',
         // 'inherit'(Gowun Batang 세리프)는 mermaid 의 폭 측정이 한글에서 5~8px
         // 과소평가돼 라벨 오른쪽이 잘린다 (fonts.ready 대기로도 안 고쳐짐 — 실측).
         // 측정과 렌더가 일치하는 시스템 산세리프로 고정한다.
-        themeVariables: { fontFamily:
-          '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif' },
+        themeVariables: { fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim() },
       });
       res(window.mermaid);
     };
@@ -821,7 +895,7 @@ const closeLayer = () => history.back();
 function applyState(st) {
   // 목표 상태에 없는 레이어는 전부 닫는다
   if (st.layer !== 'zoom') document.querySelector('.zoom')?.remove();
-  if (st.layer !== 'sheet') document.querySelector('.mask')?.remove();
+  if (st.layer !== 'sheet') closeTabPreview();
   document.body.classList.toggle('drawer', st.layer === 'drawer');
 
   const view = VIEWS.includes(st.view) ? st.view : 'chats';
@@ -876,7 +950,8 @@ function renderSessions() {
   const el = $('#list');
   // innerHTML 을 매번 갈아끼우면 그리는 도중 들어온 클릭이 씹힌다. 바뀔 때만 다시 그린다.
   const key = 'S' + S.token.slice(0, 4) + S.sessionId + S.sq + S.cursor + S.loadingMore +
-    S.total + S.matched + S.sessions.map(x => x.id + x.updatedAt + x.unread + x.title).join('|') +
+    S.total + S.matched + S.running + S.deletingId +
+    S.sessions.map(x => x.id + x.updatedAt + x.unread + x.title + x.status).join('|') +
     (S.listErr || '');
   if (key === lastKey) return;
   lastKey = key;
@@ -896,14 +971,22 @@ function renderSessions() {
       const g = grpOf((x.mtime || 0) * 1000 || Date.parse(x.updatedAt) || Date.now());
       const head = g === last ? '' : `<div class="grp">${esc(g)}</div>`;
       last = g;
+      const isRunning = x.status === 'running' || (x.id === S.sessionId && S.running);
       return head + `
-    <button class="card ${x.id === S.sessionId ? 'on' : ''}" data-id="${esc(x.id)}">
+    <div class="card ${x.id === S.sessionId ? 'on' : ''}" data-id="${esc(x.id)}">
+    <button class="card-open">
       <div class="t">${x.unread ? '<i class="unread"></i>' : ''}
         <span class="txt">${esc(x.title)}</span></div>
       ${x.preview ? `<div class="p">${esc(x.preview.replace(/\n/g, ' '))}</div>` : ''}
       <div class="m">${x.cost ? '$' + x.cost.toFixed(4) : ''}
         ${x.tokens ? Math.round(x.tokens / 1000) + 'k tok' : ''}</div>
-    </button>`;
+    </button>
+    <button class="session-delete" data-delete="${esc(x.id)}"
+      aria-label="${esc(x.title)} 대화 삭제" title="${isRunning ? '실행을 중단한 뒤 삭제해 주세요' : '대화 삭제'}"
+      ${isRunning || S.deletingId ? 'disabled' : ''}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>
+    </button></div>`;
     }).join('');
   }
 
@@ -983,14 +1066,12 @@ function renderSettings() {
   $('#list').innerHTML = `<div class="pad">
     <div class="field"><label>브리지 Bearer 토큰</label>
       <input id="tok" type="password" value="${esc(S.token)}" placeholder="~/.aside-remote/token"></div>
-    <div class="field" style="margin-top:6px"><label>본문 폰트</label>
+    <div class="field" style="margin-top:6px"><label>앱 전체 글꼴</label>
       <div class="fontgrid">${S.fonts.map(f => `
         <button class="btn fontbtn ${f.id === S.font ? 'on' : ''}" data-font="${esc(f.id)}"
                 style="font-family:${f.stack.replace(/"/g,'&quot;')}">
           ${esc(f.label)}<span class="fk">${f.webfont ? '웹폰트' : '시스템'}</span>
         </button>`).join('')}</div>
-      <div class="hint">윈도우에는 쓸 만한 한글 세리프가 없어 시스템 세리프는 바탕체로 떨어집니다.
-        웹폰트를 고르면 어느 기기에서나 같게 보입니다.</div>
     </div>
     <div class="acts"><button class="btn pri" id="saveTok">저장</button>
       <button class="btn" id="autoTok">Access 로 자동 인증</button>
@@ -1220,29 +1301,174 @@ function zoom(src) {
 }
 
 // ─────────────────────────────────────────────── 탭 상세
-function showTab(t) {
+const TAB_PREVIEW_INTERVAL = 5000;
+let tabPreview = null;
+let activeTabCapture = null;
+
+function captureTab(preview) {
+  if (tabPreview !== preview) return Promise.resolve();
+  const targetId = preview.tab.targetId;
+  if (activeTabCapture) {
+    if (activeTabCapture.targetId === targetId) return activeTabCapture.promise;
+    return activeTabCapture.promise.then(() => captureTab(preview), () => captureTab(preview));
+  }
+  const path = '/api/tabs/' + encodeURIComponent(targetId) + '/shot?fresh=true&t=' + Date.now();
+  const promise = fetch(path, {
+    cache: 'no-store',
+    headers: S.token ? { Authorization: 'Bearer ' + S.token } : {},
+  }).then(async r => {
+    if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), {
+      status: r.status, body: await r.text(),
+    });
+    const blob = await r.blob();
+    if (!blob.type.startsWith('image/')) throw new Error('이미지 응답이 아닙니다');
+    return blob;
+  });
+  const capture = { targetId, promise };
+  activeTabCapture = capture;
+  promise.then(clearCapture, clearCapture);
+  return promise;
+
+  function clearCapture() {
+    if (activeTabCapture === capture) activeTabCapture = null;
+  }
+}
+
+function closeTabPreview() {
+  const preview = tabPreview;
+  if (!preview) {
+    document.querySelector('dialog.mask')?.remove();
+    return;
+  }
+  tabPreview = null;
+  clearTimeout(preview.timer);
+  if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl);
+  if (preview.dialog.open) preview.dialog.close();
+  preview.dialog.remove();
+  requestAnimationFrame(() => {
+    if (tabPreview) return;
+    const target = preview.returnFocus?.isConnected ? preview.returnFocus : $('#browserPreview');
+    target?.focus();
+  });
+}
+
+async function updateTabPreview(preview, isManual = false) {
+  if (tabPreview !== preview || preview.loading || (preview.paused && !isManual) || !preview.tab.loaded) return;
+  preview.loading = true;
+  preview.refresh.disabled = true;
+  preview.status.className = 'preview-status';
+  preview.status.innerHTML = '<i class="spin"></i>미리보기 업데이트 중…';
+  try {
+    const blob = await captureTab(preview);
+    if (tabPreview !== preview) return;
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = resolve; image.onerror = reject; image.src = objectUrl;
+      });
+    } catch {
+      URL.revokeObjectURL(objectUrl);
+      throw new Error('미리보기 이미지를 읽을 수 없습니다');
+    }
+    if (tabPreview !== preview) { URL.revokeObjectURL(objectUrl); return; }
+    const previousUrl = preview.objectUrl;
+    preview.objectUrl = objectUrl;
+    preview.image.src = objectUrl;
+    preview.image.hidden = false;
+    preview.placeholder.hidden = true;
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    preview.updatedAt = new Date();
+    updateTabPreviewStatus(preview);
+  } catch (e) {
+    if (tabPreview !== preview) return;
+    preview.status.className = 'preview-status error';
+    preview.status.textContent = e.status === 409
+      ? '탭이 잠들어 미리보기를 업데이트할 수 없어요.'
+      : '미리보기를 업데이트하지 못했어요. 다시 시도해 주세요.';
+  } finally {
+    preview.loading = false;
+    if (tabPreview === preview) {
+      preview.refresh.disabled = false;
+      clearTimeout(preview.timer);
+      if (!preview.paused) preview.timer = setTimeout(() => updateTabPreview(preview), TAB_PREVIEW_INTERVAL);
+    }
+  }
+}
+
+function updateTabPreviewStatus(preview) {
+  const time = preview.updatedAt?.toLocaleTimeString('ko-KR', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  preview.status.className = 'preview-status';
+  preview.status.textContent = `${preview.paused ? '자동 업데이트 일시정지' : '자동 업데이트 중'}${
+    time ? ' · 마지막 업데이트 ' + time : ''}`;
+}
+
+function showTab(t, returnFocus = document.activeElement) {
   if (!t) return;
-  const m = document.createElement('div');
+  closeTabPreview();
+  const isLoaded = t.loaded !== false;
+  const m = document.createElement('dialog');
   m.className = 'mask';
-  m.innerHTML = `<div class="sheet" onclick="event.stopPropagation()">
-    <h3>${esc(t.title || '')}</h3>
-    <div class="url">${esc(t.url || '')}</div>
-    ${t.loaded
-      ? `<img class="shot" src="${esc(withTok('/api/tabs/' + t.targetId + '/shot?fresh=true'))}">`
-      : `<div class="empty">크롬이 메모리를 회수한 잠든 탭입니다.<br>
-           캡처하려면 다시 열어야 합니다.</div>`}
-    <textarea id="instr">이 페이지 내용을 한국어로 요약해줘.</textarea>
-    <div class="acts">
-      ${t.loaded
-        ? `<button class="btn pri" id="ask">에이전트에게 시키기</button>
-           <button class="btn" id="focus">포커스</button>`
-        : `<button class="btn pri" id="open">열어서 보기</button>`}
-      <button class="btn" id="close">닫기</button>
-    </div></div>`;
-  m.onclick = closeLayer;
+  m.setAttribute('aria-labelledby', 'previewHeading');
+  m.innerHTML = `<section class="sheet">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">
+        <h3 id="previewHeading">${esc(t.title || '브라우저 미리보기')}</h3>
+        <div class="url">${esc(t.url || '')}</div>
+      </div>
+      <button class="sheet-dismiss" id="sheetDismiss" aria-label="미리보기 닫기" title="미리보기 닫기">×</button>
+    </div>
+    <div class="sheet-scroll">
+      <div class="preview-frame">
+        <img class="shot" alt="${esc(t.title || '브라우저 탭')}의 현재 화면" hidden>
+        <div class="preview-placeholder">${isLoaded
+          ? '<i class="spin"></i><div style="margin-top:8px">현재 화면을 불러오는 중…</div>'
+          : '크롬이 메모리를 회수한 잠든 탭입니다.<br>캡처하려면 다시 열어야 합니다.'}</div>
+      </div>
+      <div class="preview-status" role="status" aria-live="polite">${
+        isLoaded ? '미리보기 준비 중…' : '자동 업데이트를 사용할 수 없어요.'}</div>
+      ${isLoaded ? `<div class="preview-tools">
+        <button class="btn" id="previewRefresh">지금 새로고침</button>
+        <button class="btn" id="previewPause" aria-pressed="false">자동 업데이트 일시정지</button>
+      </div>` : ''}
+      <textarea id="instr" aria-label="에이전트에게 시킬 내용">이 페이지 내용을 한국어로 요약해줘.</textarea>
+      <div class="acts">
+        ${isLoaded
+          ? `<button class="btn pri" id="ask">에이전트에게 시키기</button>
+             <button class="btn" id="focus">포커스</button>`
+          : `<button class="btn pri" id="open">열어서 보기</button>`}
+        <button class="btn danger" id="closeTab">탭 닫기</button>
+      </div>
+    </div>
+  </section>`;
   document.body.appendChild(m);
-  pushLayer('sheet');
+  m.showModal();
   const q = s => m.querySelector(s);
+  const preview = {
+    tab: { ...t, loaded: isLoaded }, dialog: m, image: q('img.shot'),
+    placeholder: q('.preview-placeholder'), status: q('.preview-status'),
+    refresh: q('#previewRefresh'), pause: q('#previewPause'),
+    loading: false, paused: false, timer: null, objectUrl: null, updatedAt: null,
+    returnFocus,
+  };
+  tabPreview = preview;
+  m.addEventListener('cancel', e => { e.preventDefault(); closeLayer(); });
+  m.addEventListener('click', e => { if (e.target === m) closeLayer(); });
+  q('#sheetDismiss').onclick = closeLayer;
+  pushLayer('sheet');
+  q('#sheetDismiss').focus();
+  if (isLoaded) updateTabPreview(preview);
+  preview.refresh && (preview.refresh.onclick = () => updateTabPreview(preview, true));
+  preview.pause && (preview.pause.onclick = () => {
+    preview.paused = !preview.paused;
+    preview.pause.setAttribute('aria-pressed', String(preview.paused));
+    preview.pause.textContent = preview.paused ? '자동 업데이트 다시 시작' : '자동 업데이트 일시정지';
+    clearTimeout(preview.timer);
+    if (preview.paused) updateTabPreviewStatus(preview); else updateTabPreview(preview);
+  });
   q('#ask') && (q('#ask').onclick = () => {
     const instr = q('#instr').value;
     closeLayer();                       // 시트 엔트리를 먼저 걷어내고 이동한다
@@ -1256,10 +1482,23 @@ function showTab(t) {
     api('/api/tabs', { method: 'POST', body: JSON.stringify({ url: t.url }) })
       .then(() => { closeLayer(); loadTabs(true); }).catch(showErr);
   });
-  q('#close').onclick = () => {
+  q('#closeTab').onclick = () => {
     api('/api/tabs/' + t.targetId, { method: 'DELETE' })
       .then(() => { closeLayer(); loadTabs(true); }).catch(showErr);
   };
+}
+
+async function showPreferredTab() {
+  const button = $('#browserPreview');
+  button.disabled = true;
+  try {
+    S.tabs = (await api('/api/tabs?refresh=true')).tabs;
+    const tab = S.tabs.find(t => t.active && t.loaded !== false) ||
+      S.tabs.find(t => t.loaded !== false) || S.tabs[0];
+    if (!tab) throw new Error('미리볼 브라우저 탭이 없습니다');
+    showTab(tab, button);
+  } catch (e) { showErr(e); }
+  finally { button.disabled = false; }
 }
 
 // ─────────────────────────────────────────────── 데이터
@@ -1282,12 +1521,15 @@ async function loadSessions(mode = 'merge') {
   try {
     const r = await api('/api/sessions?' + p);
     if (mine !== loadSeq) return;
-    const by = new Map(mode === 'reset' ? [] : S.sessions.map(x => [x.id, x]));
+    const previous = mode === 'more' ? S.sessions
+      : (mode === 'merge' && r.nextCursor
+          ? S.sessions.filter(x => (x.mtime || 0) < (r.items.at(-1)?.mtime || 0)) : []);
+    const by = new Map(previous.map(x => [x.id, x]));
     for (const x of r.items) by.set(x.id, x);   // 서버 값이 항상 이긴다
     S.sessions = [...by.values()].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
     // merge 는 1페이지만 덧칠하는 새로고침이다. 커서를 건드리면 끝까지 펼쳐둔 목록에
     // '더보기' 가 되살아나거나, 중간까지 본 진척이 1페이지로 되감긴다.
-    if (mode !== 'merge' || wasEmpty) S.cursor = r.nextCursor;
+    if (mode !== 'merge' || wasEmpty || !r.nextCursor) S.cursor = r.nextCursor;
     S.total = r.total; S.matched = r.matched; S.listErr = null;
   } catch (e) {
     if (mine !== loadSeq) return;
@@ -1323,7 +1565,7 @@ function refreshAll() { loadSessions(); if (S.view === 'tabs') loadTabs(); poll(
 
 // 아래 둘은 "적용" 만 한다. 히스토리는 navigate/applyState 가 책임진다.
 async function openSession(id) {
-  if (S.sessionId && S.sessionId !== id) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  if (S.sessionId && S.sessionId !== id) sendWhenConnected({ op: 'unsub', sessionId: S.sessionId });
   S.sessionId = id; S.msgs = []; S.pending = null; S.err = null; S.holdTurn = false;
   localStorage.setItem('lastSession', id);
   render();
@@ -1337,19 +1579,65 @@ async function openSession(id) {
       history.replaceState(curState(), '', urlOf(curState())); render(); return;
     }
   } catch (e) { showErr(e); }
-  ws?.send(JSON.stringify({ op: 'sub', sessionId: id, fromSeq: S.nextSeq, fromOffset: S.offset }));
+  sendWhenConnected({ op: 'sub', sessionId: id, fromSeq: S.nextSeq, fromOffset: S.offset });
   render();
 }
 
 function clearSession() {
-  if (S.sessionId) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  if (S.sessionId) sendWhenConnected({ op: 'unsub', sessionId: S.sessionId });
   S.sessionId = null; S.msgs = []; S.running = false; S.pending = null; S.err = null; S.holdTurn = false;
   localStorage.removeItem('lastSession');
 }
 
 function newChat() { navigate({ view: 'chats', sessionId: null }); $('#draft').focus(); }
 
+function removeSession(id) {
+  const hasSession = S.sessions.some(x => x.id === id);
+  if (!hasSession && S.sessionId !== id) return;
+  ++loadSeq;
+  S.loadingMore = false;
+  S.sessions = S.sessions.filter(x => x.id !== id);
+  if (hasSession) { S.total = Math.max(0, S.total - 1); S.matched = Math.max(0, S.matched - 1); }
+  if (S.sessionId === id) navigate({ sessionId: null }, { replace: true });
+  loadSessions(); render();
+}
+
+let deleteTarget = null;
+const deleteDialog = $('#deleteDialog'), deleteConfirm = $('#deleteConfirm');
+const deleteCancel = $('#deleteCancel'), deleteError = $('#deleteError');
+const deleteLabel = deleteConfirm.textContent;
+function confirmDelete(session) {
+  if (!session || S.deletingId) return;
+  deleteTarget = session;
+  $('#deleteTitle').textContent = session.title;
+  deleteError.hidden = true;
+  deleteDialog.showModal();
+  deleteCancel.focus();
+}
+deleteCancel.onclick = () => deleteDialog.close();
+deleteDialog.addEventListener('close', () => { deleteTarget = null; });
+deleteDialog.addEventListener('cancel', e => { if (S.deletingId) e.preventDefault(); });
+deleteConfirm.onclick = async () => {
+  const session = deleteTarget;
+  if (!session || S.deletingId) return;
+  S.deletingId = session.id; deleteConfirm.disabled = true; deleteCancel.disabled = true;
+  deleteConfirm.textContent = '삭제 중…'; deleteError.hidden = true; render();
+  try {
+    await api('/api/sessions/' + encodeURIComponent(session.id), { method: 'DELETE' });
+    deleteDialog.close();
+    removeSession(session.id);
+  } catch (e) {
+    let message = e.message;
+    try { message = JSON.parse(e.body).detail || message; } catch {}
+    deleteError.textContent = message; deleteError.hidden = false;
+  } finally {
+    S.deletingId = null; deleteConfirm.disabled = false; deleteCancel.disabled = false;
+    deleteConfirm.textContent = deleteLabel; render();
+  }
+};
+
 function send(prompt) {
+  if (S.deletingId && S.deletingId === S.sessionId) return;
   const pending = S.atts.filter(a => !a.id).length;
   if (pending) { S.err = '이미지 업로드 중입니다…'; render(); return; }
   const attachments = S.atts.filter(a => a.id).map(a => ({ id: a.id, name: a.name }));
@@ -1370,14 +1658,17 @@ function send(prompt) {
 
 // ─────────────────────────────────────────────── WebSocket
 let ws = null, backoff = 0;
+function sendWhenConnected(message) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+}
 function connect() {
   if (!S.token) return;
   try { ws?.close(); } catch {}
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   ws = new WebSocket(url);
   ws.onopen = () => { backoff = 0; S.wsOpen = true; render();
-    if (S.sessionId) ws.send(JSON.stringify({ op: 'sub', sessionId: S.sessionId,
-                                              fromSeq: S.nextSeq, fromOffset: S.offset })); };
+    if (S.sessionId) sendWhenConnected({ op: 'sub', sessionId: S.sessionId,
+                                       fromSeq: S.nextSeq, fromOffset: S.offset }); };
   ws.onclose = () => { S.wsOpen = false; render();
     setTimeout(connect, Math.min(20000, 1000 * Math.pow(2, backoff++))); };
   ws.onerror = () => {};
@@ -1416,6 +1707,7 @@ function connect() {
         }
       }
       loadSessions(); }
+    else if (m.op === 'session.deleted') removeSession(m.sessionId);
     else if (m.op === 'error') { S.err = m.message || m.error; S.running = false; S.pending = null; }
     render();
   };
@@ -1529,12 +1821,10 @@ async function initNative() {
 
   // 시스템 바 아이콘 명암을 테마에 맞춘다 (바 배경은 투명 → 웹 배경이 비친다)
   const syncBars = async () => {
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
     try {
-      await P.SafeArea?.setSystemBarsStyle?.({ style: dark ? 'DARK' : 'LIGHT' });
+      await P.SafeArea?.setSystemBarsStyle?.({ style: 'DARK' });
     } catch {}
   };
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncBars);
   syncBars();
 
   // 앱이 다시 앞으로 오면 상태를 새로 읽는다 (백그라운드 동안 실행이 끝났을 수 있다)
@@ -1631,11 +1921,16 @@ $('#msgs').addEventListener('click', e => {
 // 목록 클릭은 위임으로 받는다 — 리스트가 다시 그려져도 핸들러가 사라지지 않는다.
 $('#list').addEventListener('click', e => {
   if (e.target.closest('#more')) return loadSessions('more');
+  const del = e.target.closest('.session-delete');
+  if (del) {
+    if (!del.disabled) confirmDelete(S.sessions.find(x => x.id === del.dataset.delete));
+    return;
+  }
   const card = e.target.closest('.card');
   if (card) return navigate({ view: 'chats', sessionId: card.dataset.id },
                             { replace: card.dataset.id === S.sessionId });
   const row = e.target.closest('.tabrow');
-  if (row) return showTab(S.tabs.find(t => t.targetId === row.dataset.id));
+  if (row) return showTab(S.tabs.find(t => t.targetId === row.dataset.id), row);
 });
 
 let sqTimer = null;
@@ -1652,6 +1947,7 @@ $('#list').addEventListener('focusout', e => { if (e.target.id === 'sq') sqCaret
 document.querySelectorAll('.seg').forEach(b => b.onclick = () =>
   navigate({ view: b.dataset.view, layer: isMobile() ? 'drawer' : undefined }));
 $('#refresh').onclick = () => S.view === 'tabs' ? loadTabs(true) : refreshAll();
+$('#browserPreview').onclick = showPreferredTab;
 $('#newChat').onclick = newChat;
 $('#attach').onclick = pickImage;
 $('#filePick').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
