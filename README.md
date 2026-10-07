@@ -8,16 +8,18 @@ phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:879
                                                           ├─ aside mcp    persistent process = browser REPL
                                                           ├─ aside exec   PTY = agent runs
                                                           ├─ messages.jsonl tail = live streaming
-                                                          └─ daemon :21420 = session status
+                                                          └─ aside session list = authenticated status
 ```
 
 What you get:
 
 - **Chat UI** for your Aside agent — conversation list (search, paging), streaming
   answers with tool-activity folded into pills, image attachments (camera on phones),
-  markdown/code rendering, Linear Dark styling, Wanted Sans typography.
+  markdown/code rendering, Linear Dark styling, selectable body fonts, Remix icons.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
-  work on any tab.
+  work on any tab, and open a live preview sheet with pause and manual refresh.
+- **Conversation deletion** — confirm before deleting a conversation and its local
+  session files. Running conversations must be stopped in Aside before deletion.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
 - Optional **push notification** (ntfy) when a run finishes.
 
@@ -133,9 +135,10 @@ python3 server.py                      # dev run (uvicorn, port 8799)
 node tests/boot.test.mjs               # UI boot smoke test (needs: npm i jsdom)
 ```
 
-The web UI is a single dependency-free `web/index.html`. Vendored highlight.js is
-BSD-3 (see NOTICE).
+The web UI is a single dependency-free `web/index.html`. Functional UI icons use a
+local SVG sprite from Remix Icon 4.9.1. Bundled third-party licenses are in NOTICE
+and `web/vendor/remixicon.LICENSE`.
 
 ## License
 
-MIT
+MIT, except bundled third-party assets, which retain their licenses listed in NOTICE.

@@ -202,7 +202,7 @@ async def vendor(name: str):
     p = WEB_DIR / "vendor" / name
     if "/" in name or ".." in name or not p.exists():
         raise HTTPException(404, "not found")
-    return FileResponse(p, media_type="application/javascript",
+    return FileResponse(p, media_type="image/svg+xml" if p.suffix == ".svg" else "application/javascript",
                         headers={"Cache-Control": "public, max-age=604800"})
 
 

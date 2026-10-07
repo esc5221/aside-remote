@@ -10,7 +10,6 @@
 <meta name="apple-mobile-web-app-title" content="Aside">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1011">
-<link id="fontcss" rel="stylesheet" href="/api/font/css/wanted-sans">
 <script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/vendor/lang-kotlin.min.js"></script>
 <script defer src="/vendor/lang-swift.min.js"></script>
@@ -39,14 +38,16 @@
   --radius-sm:6px; --radius-md:8px; --radius-lg:12px;
   --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px;
   --sidebar:300px; --touch-target:44px;
+  --icon-size:16px; --icon-control:20px;
   --col:768px;          /* 메시지 컬럼 폭 = claude max-w-3xl */
   --colpad:var(--space-md);        /* px-4 */
   --composer-col:808px; /* claude max-w-[50.5rem] */
   --composer-pad:var(--space-lg);  /* md:px-5 */
   /* 본문 폰트. 설정에서 교체한다.
      윈도우엔 쓸 만한 한글 세리프가 없어(한글이 바탕체로 떨어진다) 웹폰트가 유일한 해결책이다. */
-  --font-body:"Wanted Sans Variable", "Wanted Sans", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-ui:var(--font-body);
+  --font-body:"Gowun Batang", ui-serif, Georgia, "Apple SD Gothic Neo", serif;
+  --font-ui:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+            "Segoe UI", Roboto, sans-serif;
   /* 네이티브 앱(edge-to-edge)에서 시스템 바 뒤까지 웹뷰가 확장된다 → 실제 여백은 여기서 온다 */
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bottom:env(safe-area-inset-bottom,0px);
@@ -67,6 +68,10 @@ body{
 }
 button,input,textarea{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
+.ri{display:inline-block;width:var(--icon-size);height:var(--icon-size);flex:0 0 auto;
+    fill:currentColor;vertical-align:middle;pointer-events:none}
+.ico .ri,.browser-preview-btn .ri,#attach .ri,#send .ri,.sheet-dismiss .ri{width:var(--icon-control);height:var(--icon-control)}
+.btn,.seg,.codebar .cp,.mmd .mmdbar button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 a{color:var(--accent-hover)}
 button,input,textarea,a,summary{transition:background-color .1s,border-color .1s,color .1s}
 button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{
@@ -120,7 +125,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{
 .browser-preview-btn:disabled{opacity:.5;cursor:default}
 @media (max-width:480px){
   .browser-preview-label{display:none}
-  .browser-preview-btn{padding:0;justify-content:center;min-width:var(--touch-target)}
+  .btn.browser-preview-btn{padding:0;justify-content:center;min-width:var(--touch-target)}
 }
 
 /* ---------- 탭바 ---------- */
@@ -231,7 +236,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{
 .asst li{margin:3px 0}
 .asst img{max-width:100%;border-radius:10px;background:var(--surface2);display:block;
           margin:8px 0;cursor:zoom-in}
-.asst code{font-family:var(--font-ui);font-size:13.5px;
+.asst code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
            background:var(--surface2);padding:1px 5px;border-radius:5px}
 .asst hr{border:0;border-top:1px solid var(--line2);margin:14px 0}
 .asst blockquote{margin:8px 0;padding:2px 0 2px 14px;border-left:2px solid var(--line);
@@ -272,10 +277,11 @@ pre.code{margin:0;padding:10px;overflow-x:auto;background:none}
 .mmd .mmdbar button{font-size:11px;color:var(--code-dim);padding:3px 8px;border-radius:6px;
                     border:1px solid transparent;background:none}
 .mmd .mmdbar button:hover{background:var(--code-line);color:var(--code-fg)}
+.mmd .mmdbar .ri{height:var(--icon-size);margin:0}
 .mmd .mmdsrc{margin:0;font-size:12px;white-space:pre-wrap;word-break:break-word;
              background:var(--code-bg);padding:12px 13px;color:var(--code-fg)}
 pre.code code{background:none;padding:0;color:var(--code-fg);
-              font-family:var(--font-ui);
+              font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
               font-size:13px;line-height:1.62;tab-size:2}
 
 /* hljs 테마 — 앱 팔레트에 맞춰 직접 짠 것 (배포판 테마를 쓰면 톤이 튄다) */
@@ -299,20 +305,20 @@ details summary{list-style:none;cursor:pointer;display:flex;align-items:center;g
                 font-size:12.5px;padding:3px 2px;
                 font-family:var(--font-ui)}
 details summary::-webkit-details-marker{display:none}
-details summary:before{content:"›";display:inline-block;transition:transform .12s;color:inherit}
-details[open] summary:before{transform:rotate(90deg)}
+.disclosure-icon{transition:transform .12s}
+details[open] > summary > .disclosure-icon{transform:rotate(90deg)}
 details.think summary{color:var(--faint);font-style:italic}
 details.think .body{color:var(--faint);font-size:12.5px;padding:2px 0 4px 18px;white-space:pre-wrap;
                     font-family:var(--font-ui)}
 details.tool summary{color:var(--dim)}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);
       border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:500}
-.chip .g{color:var(--accent-dim)}
+.chip .ri{color:var(--accent-dim)}
 details.tool .body code,details.res .body code{background:none;padding:0;color:inherit;font-size:inherit}
 details.tool .body,details.res .body{background:var(--code-bg);color:var(--code-fg);
       border:1px solid var(--code-line);border-radius:8px;
       padding:10px 12px;margin:5px 0;overflow:auto;max-height:340px;
-      font-family:var(--font-ui);font-size:11.5px;line-height:1.55;white-space:pre-wrap;
+      font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;
       word-break:break-word}
 details.res summary{color:var(--dim)}
 details.res.err summary{color:var(--err)}
@@ -355,7 +361,7 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
      background:var(--surface2);border:1px solid var(--line)}
 .att img{width:100%;height:100%;object-fit:cover;display:block}
 .att .x{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:9px;
-        background:rgba(0,0,0,.62);color:#fff;font-size:11px;line-height:18px;text-align:center}
+        background:rgba(0,0,0,.62);color:#fff;display:grid;place-items:center;padding:0}
 .att.up{opacity:.45}
 /* 유저 말풍선에 붙는 첨부 썸네일 */
 .user .atts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
@@ -414,7 +420,7 @@ dialog.mask::backdrop{background:#0008}
 .preview-tools .btn[aria-pressed="true"]{background:var(--surface2);color:var(--text)}
 .preview-tools + textarea{margin-top:10px}
 .sheet-dismiss{flex:0 0 var(--touch-target);width:var(--touch-target);height:var(--touch-target);border-radius:var(--radius-md);color:var(--dim);
-               font-size:20px;line-height:1}
+               display:grid;place-items:center}
 .sheet-dismiss:hover{background:var(--surface2)}
 .sheet textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius-md);
                 padding:var(--space-sm);min-height:64px;resize:vertical;outline:none}
@@ -445,7 +451,7 @@ dialog.mask::backdrop{background:#0008}
 .field input{width:100%;background:var(--surface);border:1px solid var(--line);
              border-radius:var(--radius-md);padding:7px 10px;outline:none}
 .empty{padding:40px 24px;text-align:center;color:var(--faint);font-size:13px}
-.fontgrid{display:grid;grid-template-columns:1fr;gap:7px}
+.fontgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .fontbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
          padding:var(--space-sm) 10px;border-radius:var(--radius-md);font-size:14px;color:var(--text);text-align:left}
 .fontbtn.on{border-color:var(--accent);color:var(--accent)}
@@ -453,8 +459,7 @@ dialog.mask::backdrop{background:#0008}
 .hint{font-size:11px;color:var(--faint);line-height:1.5;margin-top:7px;font-family:var(--font-ui)}
 .err{color:var(--err);font-size:12.5px;width:100%;max-width:var(--col);
      margin:0 auto;padding:4px var(--colpad)}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
-      border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+.spin{color:var(--accent);animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:12px}
 @media (max-width:820px), (hover:none){
@@ -487,27 +492,27 @@ dialog.mask::backdrop{background:#0008}
       <h1 id="sideTitle">대화</h1>
       <div class="sp"></div>
       <div class="dot" id="dot" title="연결 상태"></div>
-      <button class="ico" id="refresh" title="새로고침">⟳</button>
+      <button class="ico" id="refresh" title="새로고침" aria-label="새로고침" data-icon="refresh"></button>
     </div>
     <div class="segs">
-      <button class="seg on" data-view="chats">대화</button>
-      <button class="seg" data-view="tabs">탭</button>
-      <button class="seg" data-view="settings">설정</button>
+      <button class="seg on" data-view="chats" data-icon="chats">대화</button>
+      <button class="seg" data-view="tabs" data-icon="tabs">탭</button>
+      <button class="seg" data-view="settings" data-icon="settings">설정</button>
     </div>
     <div class="scroll" id="list"></div>
   </aside>
 
   <section id="main">
     <div class="hd">
-      <button class="ico" id="menu" title="목록">☰</button>
+      <button class="ico" id="menu" title="목록" aria-label="목록" data-icon="menu"></button>
       <div style="min-width:0;flex:1">
         <div id="chatTitle" style="font-weight:600;font-size:15px;overflow:hidden;
              text-overflow:ellipsis;white-space:nowrap">새 대화</div>
       </div>
-      <button class="btn browser-preview-btn" id="browserPreview" title="현재 브라우저 탭 미리보기" aria-label="브라우저 미리보기">
-        <span aria-hidden="true">▣</span><span class="browser-preview-label">브라우저 미리보기</span>
+      <button class="btn browser-preview-btn" id="browserPreview" title="현재 브라우저 탭 미리보기" aria-label="브라우저 미리보기" data-icon="tabs">
+        <span class="browser-preview-label">브라우저 미리보기</span>
       </button>
-      <button class="ico" id="newChat" title="새 대화">+</button>
+      <button class="ico" id="newChat" title="새 대화" aria-label="새 대화" data-icon="newChat"></button>
     </div>
     <div class="scroll" id="chatScroll">
       <div id="msgs"></div>
@@ -519,10 +524,10 @@ dialog.mask::backdrop{background:#0008}
           <div id="composerCard">
             <div id="attachRow"></div>
             <div class="crow">
-              <button id="attach" title="이미지 첨부">＋</button>
+              <button id="attach" title="이미지 첨부" aria-label="이미지 첨부" data-icon="attach"></button>
               <textarea id="draft" rows="1" placeholder="무엇을 시킬까요"
                         enterkeyhint="send"></textarea>
-              <button id="send" title="보내기"></button>
+              <button id="send" title="보내기" aria-label="보내기" data-icon="send"></button>
             </div>
             <input id="filePick" type="file" accept="image/*" multiple hidden>
           </div>
@@ -539,14 +544,13 @@ dialog.mask::backdrop{background:#0008}
   <p id="deleteError" role="alert" hidden></p>
   <div class="acts">
     <button class="btn" id="deleteCancel" autofocus>취소</button>
-    <button class="btn danger" id="deleteConfirm">삭제</button>
+    <button class="btn danger" id="deleteConfirm" data-icon="delete">삭제</button>
   </div>
 </dialog>
 
 <script>
 'use strict';
 // ─────────────────────────────────────────────── 상태
-const APP_FONT = 'wanted-sans';
 const S = {
   token: localStorage.getItem('token') || '',
   view: 'chats',
@@ -557,12 +561,37 @@ const S = {
   deletingId: null,
   q: '', liveOnly: false, det: new Map(),   // details 열림/닫힘 기억 (key → bool)
   sq: '', loadedQ: null, cursor: null, total: 0, matched: 0, loadingMore: false,
-  font: APP_FONT, fonts: [],
+  font: localStorage.getItem('font') || 'gowun-batang', fonts: [],
   atts: [],
 };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ICON_SPRITE = '/vendor/remixicon.symbol.svg?v=4.9.1';
+const ICONS = {
+  menu:'menu-line', refresh:'refresh-line', tabs:'window-line', newChat:'add-line',
+  attach:'image-add-line', send:'arrow-up-line', stop:'stop-fill', delete:'delete-bin-line',
+  close:'close-line', pause:'pause-line', play:'play-line', agent:'robot-2-line',
+  focus:'focus-3-line', open:'external-link-line', chats:'chat-3-line', settings:'settings-3-line',
+  save:'save-3-line', shield:'shield-check-line', wake:'restart-line', copy:'file-copy-line',
+  check:'check-line', code:'code-s-slash-line', diagram:'node-tree', globe:'global-line',
+  disclosure:'arrow-right-s-line', loading:'loader-4-line', terminal:'terminal-box-line',
+  search:'search-line', fetch:'download-cloud-line', read:'file-text-line', write:'file-add-line',
+  edit:'file-edit-line', todos:'checkbox-line', branch:'git-branch-line', wait:'time-line',
+  memory:'brain-line', history:'history-line', question:'question-line', tool:'tools-line', filter:'filter-3-line',
+  schedule:'calendar-schedule-line',
+};
+function icon(name, className = '') {
+  return `<svg class="ri${className ? ' ' + className : ''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="${ICON_SPRITE}#ri-${name}"></use></svg>`;
+}
+const DISCLOSURE_ICON = icon(ICONS.disclosure, 'disclosure-icon');
+const LOADING_ICON = icon(ICONS.loading, 'spin');
+const COPY_BUTTON = icon(ICONS.copy) + '복사';
+const COPIED_BUTTON = icon(ICONS.check) + '복사됨';
+const CODE_BUTTON = icon(ICONS.code) + '코드';
+const DIAGRAM_BUTTON = icon(ICONS.diagram) + '다이어그램';
+document.querySelectorAll('[data-icon]').forEach(el =>
+  el.insertAdjacentHTML('afterbegin', icon(ICONS[el.dataset.icon])));
 
 // <img src> 와 WebSocket 업그레이드는 헤더를 못 붙인다. 쿼리스트링에 토큰을 실으면
 // 접근로그·리퍼러에 남으므로, 브리지가 /api/web-token 에서 심어준 HttpOnly 쿠키를 쓴다.
@@ -612,8 +641,9 @@ function ensureFontPreviews() {
 
 async function loadFonts() {
   try {
-    S.fonts = ((await (await fetch('/api/font/list')).json()).fonts || []).filter(f => f.id === APP_FONT);
+    S.fonts = (await (await fetch('/api/font/list')).json()).fonts || [];
     applyFont(S.font);
+    if (S.view === 'settings') renderSettings();
   } catch {}
 }
 
@@ -732,12 +762,12 @@ function codeBlock(lang, body) {
   if ((lang || '').toLowerCase() === 'mermaid')
     return `<div class="mmd" data-src="${esc(body)}">` +
            `<div class="mmdbar"><span class="lang">mermaid</span>` +
-           `<button class="mtg">코드</button><button class="mcp">복사</button></div>` +
+           `<button class="mtg">${CODE_BUTTON}</button><button class="mcp">${COPY_BUTTON}</button></div>` +
            `<div class="mview"></div>` +
            `<pre class="code mmdsrc">${esc(body)}</pre></div>`;
   const l = hlLang(lang);
   return `<div class="codewrap"><div class="codebar">` +
-    `<span class="lang">${esc(lang || 'text')}</span><button class="cp">복사</button></div>` +
+    `<span class="lang">${esc(lang || 'text')}</span><button class="cp">${COPY_BUTTON}</button></div>` +
     `<pre class="code"><code${l ? ` class="language-${esc(l)}"` : ''}>${esc(body)}</code></pre></div>`;
 }
 
@@ -799,7 +829,7 @@ async function renderMermaids(root) {
     el.dataset.done = '1';
     if (mmdShowSrc.has(src)) {                    // 스트리밍 리렌더 후에도 토글 상태 유지
       el.classList.add('src');
-      const b = el.querySelector('.mtg'); if (b) b.textContent = '다이어그램';
+      const b = el.querySelector('.mtg'); if (b) b.innerHTML = DIAGRAM_BUTTON;
     }
   }
 }
@@ -821,9 +851,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-const GLYPH = { repl:'◐', bash:'▸', websearch:'⌕', webfetch:'⤓', read_file:'▤',
-  write_file:'✎', edit_file:'✎', write_todos:'☑', subagent:'⑃', subagent_wait:'⑃',
-  memory_search:'◈', browsing_history_search:'◷', ask_user_question:'?' };
+const TOOL_ICON = { repl:ICONS.code, bash:ICONS.terminal, websearch:ICONS.search, webfetch:ICONS.fetch,
+  read_file:ICONS.read, write_file:ICONS.write, edit_file:ICONS.edit, write_todos:ICONS.todos,
+  subagent:ICONS.branch, subagent_wait:ICONS.wait, memory_search:ICONS.memory,
+  browsing_history_search:ICONS.history, history_search:ICONS.history, ask_user_question:ICONS.question,
+  message_agent:ICONS.chats, routine_update:ICONS.schedule };
 
 // ─────────────────────────────────────────────── 렌더
 // ─────────────────────────────────────────────── 라우터
@@ -984,8 +1016,7 @@ function renderSessions() {
     <button class="session-delete" data-delete="${esc(x.id)}"
       aria-label="${esc(x.title)} 대화 삭제" title="${isRunning ? '실행을 중단한 뒤 삭제해 주세요' : '대화 삭제'}"
       ${isRunning || S.deletingId ? 'disabled' : ''}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>
+      ${icon(ICONS.delete)}
     </button></div>`;
     }).join('');
   }
@@ -1027,7 +1058,7 @@ function renderTabs() {
   el.innerHTML = `
     <div class="searchbar">
       <input id="q" placeholder="제목·URL 검색" value="${esc(S.q)}">
-      <button class="btn" id="lo">${S.liveOnly ? '살아있음' : '전체'}</button>
+      <button class="btn" id="lo" aria-pressed="${S.liveOnly}">${icon(ICONS.filter)}${S.liveOnly ? '살아있음' : '전체'}</button>
     </div>
     <div class="meta" style="padding:0 2px 6px">${S.tabs.length}개 · 살아있음 ${live}</div>
     ` + f.map(t => `
@@ -1035,7 +1066,7 @@ function renderTabs() {
       ${t.loaded
         ? `<img class="thumb" data-src="/api/tabs/${esc(t.targetId)}/shot"
              data-fav="${esc(t.favicon || '')}">`
-        : `<div class="fav">${t.favicon ? `<img src="${esc(t.favicon)}">` : '◻'}</div>`}
+        : `<div class="fav">${t.favicon ? `<img src="${esc(t.favicon)}">` : icon(ICONS.globe)}</div>`}
       <div style="min-width:0;flex:1">
         <div class="t">${esc(t.title || t.url || '')}</div>
         <div class="h"><i class="${t.loaded ? 'live' : ''}"></i><span>${esc(host(t.url))}${
@@ -1066,16 +1097,16 @@ function renderSettings() {
   $('#list').innerHTML = `<div class="pad">
     <div class="field"><label>브리지 Bearer 토큰</label>
       <input id="tok" type="password" value="${esc(S.token)}" placeholder="~/.aside-remote/token"></div>
-    <div class="field" style="margin-top:6px"><label>앱 전체 글꼴</label>
+    <div class="field" style="margin-top:6px"><label>본문 폰트</label>
       <div class="fontgrid">${S.fonts.map(f => `
         <button class="btn fontbtn ${f.id === S.font ? 'on' : ''}" data-font="${esc(f.id)}"
                 style="font-family:${f.stack.replace(/"/g,'&quot;')}">
           ${esc(f.label)}<span class="fk">${f.webfont ? '웹폰트' : '시스템'}</span>
         </button>`).join('')}</div>
     </div>
-    <div class="acts"><button class="btn pri" id="saveTok">저장</button>
-      <button class="btn" id="autoTok">Access 로 자동 인증</button>
-      <button class="btn" id="wake">Aside 깨우기</button></div>
+    <div class="acts"><button class="btn pri" id="saveTok">${icon(ICONS.save)}저장</button>
+      <button class="btn" id="autoTok">${icon(ICONS.shield)}Access 로 자동 인증</button>
+      <button class="btn" id="wake">${icon(ICONS.wake)}Aside 깨우기</button></div>
     <div class="meta" style="display:block;margin-top:16px;line-height:1.8">
       연결: ${S.wsOpen ? 'WS open' : '끊김'}<br>
       Aside.app: ${h?.asideApp ? '실행 중' : '꺼짐'}<br>
@@ -1138,7 +1169,7 @@ function renderChat() {
           ? `<div class="atts">${S.pendingAtts.map(f =>
               `<img src="/api/upload/${esc(f)}" alt="">`).join('')}</div>` : ''
       }${esc(S.pending)}</div>` : '';
-  const workingHtml = S.running ? `<div class="working"><i class="spin"></i>작업 중…</div>` : '';
+  const workingHtml = S.running ? `<div class="working">${LOADING_ICON}작업 중…</div>` : '';
   // 전송한 턴은 스페이서(.turn min-height)로 감싼다 — 새 유저 메시지가 화면 상단으로
   // 올라오는 claude.ai 모션. 예전엔 역사가 지워져서 "우연히" 이렇게 보였는데,
   // 이제는 위로 스크롤하면 이전 내용이 그대로 있다.
@@ -1161,19 +1192,20 @@ function renderChat() {
     const t = keepScroll.get(b.parentElement.dataset.k);
     if (t) b.scrollTop = t;
   });
-  box.querySelectorAll('.codebar .cp').forEach(b => b.onclick = e => {
-    const code = e.target.closest('.codewrap')?.querySelector('code');
+  box.querySelectorAll('.codebar .cp').forEach(b => b.onclick = () => {
+    const code = b.closest('.codewrap')?.querySelector('code');
     if (!code) return;
     navigator.clipboard.writeText(code.textContent);
-    e.target.textContent = '복사됨'; setTimeout(() => e.target.textContent = '복사', 1200);
+    b.innerHTML = COPIED_BUTTON; setTimeout(() => b.innerHTML = COPY_BUTTON, 1200);
   });
   highlightNew(box);
   box.querySelectorAll('.asst img, .user .atts img').forEach(im => im.onclick = () => zoom(im.src));
   renderMermaids(box);
   const sb = $('#send');
   sb.className = S.running ? 'stop' : '';
-  sb.textContent = S.running ? '■' : '➤';
+  sb.innerHTML = icon(S.running ? ICONS.stop : ICONS.send);
   sb.title = S.running ? '스트리밍 끊기 (실행 자체는 Aside 앱에서 중단)' : '보내기';
+  sb.setAttribute('aria-label', sb.title);
   if (atBottom) box.parentElement.scrollTop = box.parentElement.scrollHeight;
 }
 
@@ -1233,7 +1265,7 @@ function stepHtml(m, base, si) {
   if (m.role === 'toolResult') {
     const head = (text.split('\n').find(l => l.trim()) || '').slice(0, 80);
     return `<details class="res ${m.isError ? 'err' : ''}" ${dAttr(`${base}/${si}`, m.isError)}>
-      <summary>${m.isError ? '실패' : '결과'}${m.toolName ? ' · ' + esc(m.toolName) : ''}
+      <summary>${DISCLOSURE_ICON}${m.isError ? '실패' : '결과'}${m.toolName ? ' · ' + esc(m.toolName) : ''}
         &nbsp;${esc(head)}</summary>
       <div class="body">${esc(text.slice(0, 20000))}</div></details>`;
   }
@@ -1242,15 +1274,15 @@ function stepHtml(m, base, si) {
     if (b.type === 'thinking') {
       const head = (String(b.text || '').split('\n').find(l => l.trim()) || '생각 중')
         .replace(/\*/g, '').slice(0, 90);
-      return `<details class="think" ${dAttr(k)}><summary>${esc(head)}</summary>
+      return `<details class="think" ${dAttr(k)}><summary>${DISCLOSURE_ICON}${esc(head)}</summary>
         <div class="body">${esc(b.text || '(내용 없음)')}</div></details>`;
     }
     if (b.type === 'toolCall') {
       const a = b.args || {};
       const body = a.code || a.command || a.query || a.prompt || a.path || a.url || JSON.stringify(a, null, 1);
       const tl = hlLang(TOOL_LANG[b.name]);
-      return `<details class="tool" ${dAttr(k)}><summary><span class="chip">
-        <span class="g">${GLYPH[b.name] || '•'}</span>${esc(b.name || 'tool')}</span></summary>
+      return `<details class="tool" ${dAttr(k)}><summary>${DISCLOSURE_ICON}<span class="chip">
+        ${icon(TOOL_ICON[b.name] || ICONS.tool)}${esc(b.name || 'tool')}</span></summary>
         <div class="body"><code${tl ? ` class="language-${tl}"` : ''}>${esc(String(body))}</code></div>
         </details>`;
     }
@@ -1289,7 +1321,7 @@ function itemHtml(item, live) {
   // 툴 활동 — 접힘이 기본
   const base = `${S.sessionId}|${item.steps[0]?.seq}`;
   return `<details class="act${live ? ' live' : ''}" data-seq="${item.steps[0]?.seq}" ${dAttr(base)}>
-    <summary><span class="spark"></span><span class="lbl">${esc(actLabel(item.steps, live))}</span></summary>
+    <summary>${DISCLOSURE_ICON}<span class="lbl">${esc(actLabel(item.steps, live))}</span></summary>
     <div class="actbody">${item.steps.map((m, si) => stepHtml(m, base, si)).join('')}</div></details>`;
 }
 
@@ -1357,7 +1389,7 @@ async function updateTabPreview(preview, isManual = false) {
   preview.loading = true;
   preview.refresh.disabled = true;
   preview.status.className = 'preview-status';
-  preview.status.innerHTML = '<i class="spin"></i>미리보기 업데이트 중…';
+  preview.status.innerHTML = LOADING_ICON + '미리보기 업데이트 중…';
   try {
     const blob = await captureTab(preview);
     if (tabPreview !== preview) return;
@@ -1419,28 +1451,28 @@ function showTab(t, returnFocus = document.activeElement) {
         <h3 id="previewHeading">${esc(t.title || '브라우저 미리보기')}</h3>
         <div class="url">${esc(t.url || '')}</div>
       </div>
-      <button class="sheet-dismiss" id="sheetDismiss" aria-label="미리보기 닫기" title="미리보기 닫기">×</button>
+      <button class="sheet-dismiss" id="sheetDismiss" aria-label="미리보기 닫기" title="미리보기 닫기">${icon(ICONS.close)}</button>
     </div>
     <div class="sheet-scroll">
       <div class="preview-frame">
         <img class="shot" alt="${esc(t.title || '브라우저 탭')}의 현재 화면" hidden>
         <div class="preview-placeholder">${isLoaded
-          ? '<i class="spin"></i><div style="margin-top:8px">현재 화면을 불러오는 중…</div>'
+          ? LOADING_ICON + '<div style="margin-top:8px">현재 화면을 불러오는 중…</div>'
           : '크롬이 메모리를 회수한 잠든 탭입니다.<br>캡처하려면 다시 열어야 합니다.'}</div>
       </div>
       <div class="preview-status" role="status" aria-live="polite">${
         isLoaded ? '미리보기 준비 중…' : '자동 업데이트를 사용할 수 없어요.'}</div>
       ${isLoaded ? `<div class="preview-tools">
-        <button class="btn" id="previewRefresh">지금 새로고침</button>
-        <button class="btn" id="previewPause" aria-pressed="false">자동 업데이트 일시정지</button>
+        <button class="btn" id="previewRefresh">${icon(ICONS.refresh)}지금 새로고침</button>
+        <button class="btn" id="previewPause" aria-pressed="false">${icon(ICONS.pause)}자동 업데이트 일시정지</button>
       </div>` : ''}
       <textarea id="instr" aria-label="에이전트에게 시킬 내용">이 페이지 내용을 한국어로 요약해줘.</textarea>
       <div class="acts">
         ${isLoaded
-          ? `<button class="btn pri" id="ask">에이전트에게 시키기</button>
-             <button class="btn" id="focus">포커스</button>`
-          : `<button class="btn pri" id="open">열어서 보기</button>`}
-        <button class="btn danger" id="closeTab">탭 닫기</button>
+          ? `<button class="btn pri" id="ask">${icon(ICONS.agent)}에이전트에게 시키기</button>
+             <button class="btn" id="focus">${icon(ICONS.focus)}포커스</button>`
+          : `<button class="btn pri" id="open">${icon(ICONS.open)}열어서 보기</button>`}
+        <button class="btn danger" id="closeTab">${icon(ICONS.close)}탭 닫기</button>
       </div>
     </div>
   </section>`;
@@ -1465,7 +1497,8 @@ function showTab(t, returnFocus = document.activeElement) {
   preview.pause && (preview.pause.onclick = () => {
     preview.paused = !preview.paused;
     preview.pause.setAttribute('aria-pressed', String(preview.paused));
-    preview.pause.textContent = preview.paused ? '자동 업데이트 다시 시작' : '자동 업데이트 일시정지';
+    preview.pause.innerHTML = icon(preview.paused ? ICONS.play : ICONS.pause) +
+      (preview.paused ? '자동 업데이트 다시 시작' : '자동 업데이트 일시정지');
     clearTimeout(preview.timer);
     if (preview.paused) updateTabPreviewStatus(preview); else updateTabPreview(preview);
   });
@@ -1605,7 +1638,7 @@ function removeSession(id) {
 let deleteTarget = null;
 const deleteDialog = $('#deleteDialog'), deleteConfirm = $('#deleteConfirm');
 const deleteCancel = $('#deleteCancel'), deleteError = $('#deleteError');
-const deleteLabel = deleteConfirm.textContent;
+const deleteButton = deleteConfirm.innerHTML;
 function confirmDelete(session) {
   if (!session || S.deletingId) return;
   deleteTarget = session;
@@ -1621,7 +1654,7 @@ deleteConfirm.onclick = async () => {
   const session = deleteTarget;
   if (!session || S.deletingId) return;
   S.deletingId = session.id; deleteConfirm.disabled = true; deleteCancel.disabled = true;
-  deleteConfirm.textContent = '삭제 중…'; deleteError.hidden = true; render();
+  deleteConfirm.innerHTML = LOADING_ICON + '삭제 중…'; deleteError.hidden = true; render();
   try {
     await api('/api/sessions/' + encodeURIComponent(session.id), { method: 'DELETE' });
     deleteDialog.close();
@@ -1632,7 +1665,7 @@ deleteConfirm.onclick = async () => {
     deleteError.textContent = message; deleteError.hidden = false;
   } finally {
     S.deletingId = null; deleteConfirm.disabled = false; deleteCancel.disabled = false;
-    deleteConfirm.textContent = deleteLabel; render();
+    deleteConfirm.innerHTML = deleteButton; render();
   }
 };
 
@@ -1743,7 +1776,7 @@ function renderAtts() {
   el.innerHTML = S.atts.map((a, i) => `
     <div class="att${a.id ? '' : ' up'}">
       <img src="${esc(a.preview)}" alt="">
-      <button class="x" data-i="${i}">×</button>
+      <button class="x" data-i="${i}" aria-label="${esc(a.name || '이미지')} 첨부 제거">${icon(ICONS.close)}</button>
     </div>`).join('');
   el.querySelectorAll('.x').forEach(b => b.onclick = () => {
     const a = S.atts[+b.dataset.i];
@@ -1881,7 +1914,7 @@ $('#list').addEventListener('error', e => {
   const box = document.createElement('div');
   box.className = 'fav';
   if (fav) { const f = document.createElement('img'); f.src = fav; box.appendChild(f); }
-  else box.textContent = '◻';
+  else box.innerHTML = icon(ICONS.globe);
   im.replaceWith(box);
 }, true);
 
@@ -1908,13 +1941,15 @@ $('#msgs').addEventListener('toggle', e => {
 $('#msgs').addEventListener('click', e => {
   const box = e.target.closest('.mmd');
   if (!box) return;
-  if (e.target.classList.contains('mtg')) {
+  const button = e.target.closest('button');
+  if (!button) return;
+  if (button.classList.contains('mtg')) {
     const show = box.classList.toggle('src');
-    e.target.textContent = show ? '다이어그램' : '코드';
+    button.innerHTML = show ? DIAGRAM_BUTTON : CODE_BUTTON;
     if (show) mmdShowSrc.add(box.dataset.src); else mmdShowSrc.delete(box.dataset.src);
-  } else if (e.target.classList.contains('mcp')) {
+  } else if (button.classList.contains('mcp')) {
     navigator.clipboard.writeText(box.dataset.src);
-    e.target.textContent = '복사됨'; setTimeout(() => e.target.textContent = '복사', 1200);
+    button.innerHTML = COPIED_BUTTON; setTimeout(() => button.innerHTML = COPY_BUTTON, 1200);
   }
 });
 

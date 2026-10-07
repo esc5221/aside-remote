@@ -7,7 +7,7 @@ This file defines the current app appearance. Apply it to the existing chat, con
 - Reference: [VoltAgent's Linear DESIGN.md](https://github.com/VoltAgent/awesome-design-md/blob/main/design-md/linear.app/DESIGN.md), retrieved 2026-10-08, MIT license. This is an independent analysis, not an official Linear specification.
 - Reuse its charcoal surface ladder, lavender accent, hairline borders, restrained elevation, 4px spacing scale, and small corner radii.
 - Use the reference's `surface-1` as the app canvas. Its near-black marketing canvas and large marketing headings are not appropriate for this conversation app.
-- Keep Wanted Sans throughout the app, including code, as requested. Keep existing Korean copy, navigation, data, and behavior.
+- Preserve the original body-font selection and saved preference, system UI fonts, and monospaced code. Keep existing Korean copy, navigation, data, and behavior.
 - The generated desktop/mobile concept illustrates the surface hierarchy, compact navigation, single composer, and preview sheet. Existing app content and the exact tokens below take precedence over invented sample content or image artifacts.
 
 ## Tokens
@@ -33,7 +33,8 @@ Use a fixed dark color scheme regardless of the OS appearance. Native form contr
 
 ## Typography and density
 
-- Wanted Sans Variable, Wanted Sans, then the platform sans-serif fallback. Load through the existing same-origin font proxy.
+- Default body font: Gowun Batang with serif fallbacks. Settings expose all available body fonts, including optional Wanted Sans, and preserve the selected font across reloads. Load webfonts through the existing same-origin font proxy.
+- Use platform sans-serif fonts for UI controls and monospaced fonts for inline code, code blocks, and tool output.
 - UI text: 14px / 1.5; conversation text: 15px / 1.6; sidebar heading: 18px / 1.2, weight 600; row titles: 13px, weight 600; labels and metadata: 11–12px.
 - Keep code at 13px with syntax colors and its own horizontal scrolling.
 - One density step: sidebar 340px → 300px; conversation gutter 16px → 12px; composer gutter 20px → 16px; row padding 12px → 8px; turn separation 34px → 24px; paragraph gap 10px → 8px.
@@ -47,10 +48,19 @@ Use a fixed dark color scheme regardless of the OS appearance. Native form contr
 - Chat: plain assistant text, neutral user bubble, existing markdown tables, code, tool disclosures, images, and metadata. Do not add new chat bubbles, sample responses, or synthetic cards.
 - Composer: one 12px panel with 8px padding, thin border, neutral attachment control, lavender send control. Preserve independent long-input scrolling and the sticky composer. Its existing background fade is functional occlusion, not decorative imagery.
 - Tabs: compact 8px rows, 72×48px preview thumbnails, ellipsized titles and URLs, existing active indicators.
-- Settings: 8px fields/buttons, 12px section padding, Wanted Sans selection, existing save/auth/sleep controls.
+- Settings: 8px fields/buttons, 12px section padding, a two-column body-font selector, existing save/auth/sleep controls.
 - Preview: existing native bottom sheet, 12px corners and internal padding. Preserve real captured-page colors and aspect ratio; do not tint the captured browser image. Preserve pause, refresh, close, agent instruction, and tab actions.
 - Delete confirmation: 12px dialog, 16px padding, wrapped long title, bounded viewport height and internal scrolling. Keep the destructive warning and explicit confirmation.
 - Image viewer: existing dark full-screen overlay with contained image and close interaction.
+
+## Icons
+
+- Use official Remix Icon 4.9.1 SVGs for all functional UI icons. The selected symbols are bundled in `web/vendor/remixicon.symbol.svg`; their original paths and 24×24 view boxes are preserved. Use the existing `ICONS` registry and `icon()` renderer when adding or changing an icon.
+- Use line variants, except the solid stop control. Base icons are 16px; icon-only header, composer, and preview-dismiss controls use 20px. Inherit the control's text color and center icons with a 6px gap beside labels.
+- Preserve the existing 44px touch targets. Give icon-only controls explicit accessible names, and hide decorative SVGs from assistive technology. Keep text labels for preview actions, settings actions, and navigation.
+- Disclosure arrows rotate only when their own details element is open. Loading icons rotate, except under reduced motion. Pause/resume and copy/copied states retain their matching Remix icons after updates.
+- Keep Aside's brand/app icons and real website favicons. Remix icons serve UI actions rather than app identity, as required by the bundled Remix Icon License v1.0. Use Remix's globe icon only for a missing website favicon.
+- Serve the SVG sprite from the app's own origin. Do not add an icon font or a third-party runtime dependency.
 
 ## States, motion, and verification
 
