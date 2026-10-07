@@ -57,6 +57,9 @@ if not BEARER:
     _TOKEN_FILE.chmod(0o600)
 
 # --- Aside paths -------------------------------------------------------
+# 사용자 테마 CSS — 있으면 기본 스타일 뒤에 로드된다 (README "테마" 참고)
+THEME_CSS = Path(_env("ASIDE_REMOTE_THEME_CSS", str(HOME / ".aside-remote/theme.css"))).expanduser()
+
 ASIDE_BIN = str(Path(_env("ASIDE_BIN", str(HOME / ".local/bin/aside"))).expanduser())
 # CLI account id. Must match the user dir below (u0 -> ~/.aside/u/0) — a different
 # account makes the bridge look in the wrong place for sessions. Every CLI call

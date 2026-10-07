@@ -9,8 +9,17 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-title" content="Aside">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf9f7">
+<script>
+// 테마는 첫 페인트 전에 정한다 — 늦으면 라이트로 번쩍였다가 바뀐다.
+// 'auto' 는 저장값일 뿐이고, <html data-theme> 에는 항상 실제로 그릴 테마가 들어간다.
+(function () {
+  let t = 'auto';
+  try { t = localStorage.getItem('theme') || 'auto'; } catch {}
+  if (t === 'auto') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+})();
+</script>
 <script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/vendor/lang-kotlin.min.js"></script>
 <script defer src="/vendor/lang-swift.min.js"></script>
@@ -49,8 +58,8 @@
   --safe-left:env(safe-area-inset-left,0px);
   --safe-right:env(safe-area-inset-right,0px);
 }
-@media (prefers-color-scheme: dark){
-  :root{
+/* 테마 = 위 토큰을 덮어쓰는 묶음. 사용자 theme.css 도 같은 방식으로 덮어쓴다 (README "테마"). */
+:root[data-theme="dark"]{
     /* claude.ai 다크 실측: 배경 rgb(21,21,21) · 컴포저 rgb(32,32,31)
        · 본문 rgb(240,239,236) · 보조 hsl(55 9% 74%) · 말풍선 rgba(255,255,255,.05) */
     --bg:#151515; --surface:#1c1c1b; --surface2:#232322; --composer:#20201f;
@@ -63,9 +72,21 @@
     --c-fn:#7fb3d5; --c-type:#d9b06a; --c-attr:#c9a5d8; --c-meta:#a8a49c;
     --accent:#e08161; --accent-dim:#e08161;
     --err:#f2b8b5; --ok:#4fa96a; --warn:#e0a03c;
-  }
-  #composerCard{border-color:transparent}
 }
+/* Linear 계열 차콜 + 라벤더. 코드 하이라이트는 dark 값을 그대로 쓴다. (PR #1, @mym0404 제안) */
+:root[data-theme="linear"]{
+    --bg:#0f1011; --surface:#191a1b; --surface2:#23252a; --composer:#191a1b;
+    --text:#f7f8f8; --dim:#d0d6e0; --faint:#8a8f98;
+    --line:#34343a; --line2:#23252a;
+    --bubble:rgba(255,255,255,.05); --code-bg:#0f1011; --code-fg:#e6e4de; --code-line:#23252a;
+    --sbar:rgba(247,248,248,.20); --sbar-hi:rgba(247,248,248,.36);
+    --code-bar:#141516; --code-dim:#8a8f98;
+    --c-comment:#6f6b64; --c-key:#828fff; --c-str:#9ec27f; --c-num:#d9b06a;
+    --c-fn:#7fb3d5; --c-type:#d9b06a; --c-attr:#c9a5d8; --c-meta:#a8a49c;
+    --accent:#5e6ad2; --accent-dim:#828fff;
+    --err:#e5484d; --ok:#30a46c; --warn:#d9a54e;
+}
+:root:is([data-theme="dark"],[data-theme="linear"]) #composerCard{border-color:transparent}
 *{box-sizing:border-box}
 html,body{height:100%}
 /* 키보드가 올라오며 리사이즈될 때 드러나는 창 배경이 흰색으로 번쩍이지 않게 */
@@ -417,7 +438,39 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
       border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .working{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:12px}
+
+/* ---------- 대화 삭제 ---------- */
+.cardwrap{position:relative}
+.cardwrap .card{padding-right:38px}
+.cdel{position:absolute;top:8px;right:6px;width:28px;height:28px;border-radius:8px;
+      color:var(--faint);font-size:15px;line-height:28px;text-align:center;opacity:0;transition:opacity .12s}
+.cardwrap:hover .cdel,.cdel:focus-visible{opacity:1}
+.cdel:hover{background:var(--surface2);color:var(--err)}
+.cdel[disabled]{cursor:not-allowed}
+.cdel[disabled]:hover{background:none;color:var(--faint)}
+@media (hover:none){ .cdel{opacity:.7} }
+.btn.danger{border-color:var(--err);color:var(--err)}
+.btn[disabled]{opacity:.5;cursor:default}
+.sheet .msg{font-size:13px;color:var(--dim);margin:8px 0 2px;line-height:1.6}
+.sheet .msg b{color:var(--text);overflow-wrap:anywhere}
+.sheet .msg.err{color:var(--err)}
+
+/* ---------- 브라우저 미리보기 ---------- */
+.pvbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 10px}
+.pvbar .st{flex:1;min-width:140px;font-size:11px;color:var(--faint);display:flex;align-items:center;gap:7px}
+.pvbar .st.err{color:var(--err)}
+.pvbar .btn{padding:5px 11px;font-size:12px}
+
+/* ---------- 테마 선택 ---------- */
+.themegrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.themebtn{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;
+          font-size:13px;color:var(--text);text-align:left}
+.themebtn.on{border-color:var(--accent);color:var(--accent)}
+.themebtn .sw{display:flex;flex:0 0 auto;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.themebtn .sw i{width:9px;height:18px}
 </style>
+<!-- 사용자 테마: ~/.aside-remote/theme.css (없으면 빈 파일). 기본 스타일 뒤라서 덮어쓴다. -->
+<link rel="stylesheet" href="/theme.css">
 </head>
 <body>
 <div id="scrim"></div>
@@ -445,6 +498,7 @@ details.res .body{background:var(--surface2);color:var(--dim);border-color:var(-
              text-overflow:ellipsis;white-space:nowrap">새 대화</div>
       </div>
       <div class="sp"></div>
+      <button class="ico" id="browserPreview" title="브라우저 미리보기">▣</button>
       <button class="ico" id="newChat" title="새 대화">+</button>
     </div>
     <div class="scroll" id="chatScroll">
@@ -483,7 +537,8 @@ const S = {
   q: '', liveOnly: false, det: new Map(),   // details 열림/닫힘 기억 (key → bool)
   sq: '', loadedQ: null, cursor: null, total: 0, matched: 0, loadingMore: false,
   font: localStorage.getItem('font') || 'gowun-batang', fonts: [],
-  atts: [],
+  theme: localStorage.getItem('theme') || 'auto',
+  atts: [], deletingId: null,
 };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -504,6 +559,36 @@ async function api(path, opts = {}) {
   const ct = r.headers.get('content-type') || '';
   return ct.includes('json') ? r.json() : r.text();
 }
+
+// ─────────────────────────────────────────────── 테마
+// 색은 전부 :root 토큰이다. 테마는 그 토큰을 덮어쓰는 묶음일 뿐이라 레이아웃은 건드리지 않는다.
+// sw = 설정 화면 견본 (배경·표면·강조).
+const THEMES = [
+  { id: 'auto',   label: '시스템 따라가기', sw: ['#faf9f7', '#151515', '#c96442'] },
+  { id: 'light',  label: '라이트',          sw: ['#faf9f7', '#fff', '#c96442'],    dark: false },
+  { id: 'dark',   label: '다크',            sw: ['#151515', '#1c1c1b', '#e08161'], dark: true },
+  { id: 'linear', label: 'Linear 다크',     sw: ['#0f1011', '#191a1b', '#5e6ad2'], dark: true },
+];
+const sysDark = matchMedia('(prefers-color-scheme: dark)');
+const resolvedTheme = () => S.theme === 'auto' || !THEMES.some(t => t.id === S.theme)
+  ? (sysDark.matches ? 'dark' : 'light') : S.theme;
+// 사용자 theme.css 가 data-theme 에 맞춰 쓸 수 있도록 dark 여부는 테마 메타에서 온다.
+const isDark = () => !!THEMES.find(t => t.id === resolvedTheme())?.dark;
+
+function applyTheme() {
+  document.documentElement.dataset.theme = resolvedTheme();
+  // 주소창·상태바 색은 실제 배경을 따른다 (theme.css 로 바꾼 값까지).
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg || '#faf9f7');
+  syncNativeBars();
+  // 이미 그린 다이어그램은 이전 테마 색이다 → 캐시를 버리고 다음 렌더에서 새로 그린다.
+  if (window.mermaid) {
+    mmdInit(window.mermaid); mmdCache.clear();
+    document.querySelectorAll('.mmd[data-done]').forEach(el => delete el.dataset.done);
+    renderMermaids(document);
+  }
+}
+sysDark.addEventListener('change', () => { if (S.theme === 'auto') applyTheme(); });
 
 // ─────────────────────────────────────────────── 폰트
 // 본문 폰트는 브리지가 프록시한다 → 브라우저는 fonts.googleapis.com 을 직접 때리지 않고,
@@ -684,22 +769,25 @@ function mmdLoad() {
     const sc = document.createElement('script');
     sc.src = '/vendor/mermaid.min.js';
     sc.onload = () => {
-      const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-      window.mermaid.initialize({
-        startOnLoad: false, securityLevel: 'strict',
-        theme: dark ? 'dark' : 'neutral',
-        // 'inherit'(Gowun Batang 세리프)는 mermaid 의 폭 측정이 한글에서 5~8px
-        // 과소평가돼 라벨 오른쪽이 잘린다 (fonts.ready 대기로도 안 고쳐짐 — 실측).
-        // 측정과 렌더가 일치하는 시스템 산세리프로 고정한다.
-        themeVariables: { fontFamily:
-          '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif' },
-      });
+      mmdInit(window.mermaid);
       res(window.mermaid);
     };
     sc.onerror = () => res(null);
     document.head.appendChild(sc);
   });
   return mmdLib;
+}
+
+function mmdInit(M) {
+      M.initialize({
+        startOnLoad: false, securityLevel: 'strict',
+        theme: isDark() ? 'dark' : 'neutral',
+        // 'inherit'(Gowun Batang 세리프)는 mermaid 의 폭 측정이 한글에서 5~8px
+        // 과소평가돼 라벨 오른쪽이 잘린다 (fonts.ready 대기로도 안 고쳐짐 — 실측).
+        // 측정과 렌더가 일치하는 시스템 산세리프로 고정한다.
+        themeVariables: { fontFamily:
+          '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif' },
+      });
 }
 
 async function renderMermaids(root) {
@@ -821,7 +909,7 @@ const closeLayer = () => history.back();
 function applyState(st) {
   // 목표 상태에 없는 레이어는 전부 닫는다
   if (st.layer !== 'zoom') document.querySelector('.zoom')?.remove();
-  if (st.layer !== 'sheet') document.querySelector('.mask')?.remove();
+  if (st.layer !== 'sheet') { document.querySelector('.mask')?.remove(); stopTabPreview(); }
   document.body.classList.toggle('drawer', st.layer === 'drawer');
 
   const view = VIEWS.includes(st.view) ? st.view : 'chats';
@@ -876,7 +964,8 @@ function renderSessions() {
   const el = $('#list');
   // innerHTML 을 매번 갈아끼우면 그리는 도중 들어온 클릭이 씹힌다. 바뀔 때만 다시 그린다.
   const key = 'S' + S.token.slice(0, 4) + S.sessionId + S.sq + S.cursor + S.loadingMore +
-    S.total + S.matched + S.sessions.map(x => x.id + x.updatedAt + x.unread + x.title).join('|') +
+    S.total + S.matched + S.deletingId + S.running +
+    S.sessions.map(x => x.id + x.updatedAt + x.unread + x.title + x.status).join('|') +
     (S.listErr || '');
   if (key === lastKey) return;
   lastKey = key;
@@ -896,14 +985,21 @@ function renderSessions() {
       const g = grpOf((x.mtime || 0) * 1000 || Date.parse(x.updatedAt) || Date.now());
       const head = g === last ? '' : `<div class="grp">${esc(g)}</div>`;
       last = g;
+      // 삭제 버튼은 카드 <button> 밖에 둔다 — 버튼 안에 버튼은 HTML 이 허용하지 않는다.
+      const running = x.status === 'running' || (x.id === S.sessionId && S.running);
       return head + `
+    <div class="cardwrap">
     <button class="card ${x.id === S.sessionId ? 'on' : ''}" data-id="${esc(x.id)}">
       <div class="t">${x.unread ? '<i class="unread"></i>' : ''}
         <span class="txt">${esc(x.title)}</span></div>
       ${x.preview ? `<div class="p">${esc(x.preview.replace(/\n/g, ' '))}</div>` : ''}
       <div class="m">${x.cost ? '$' + x.cost.toFixed(4) : ''}
         ${x.tokens ? Math.round(x.tokens / 1000) + 'k tok' : ''}</div>
-    </button>`;
+    </button>
+    <button class="cdel" data-del="${esc(x.id)}" aria-label="${esc(x.title)} 대화 삭제"
+      title="${running ? '실행을 중단한 뒤 삭제해 주세요' : '대화 삭제'}"
+      ${running || S.deletingId ? 'disabled' : ''}>×</button>
+    </div>`;
     }).join('');
   }
 
@@ -983,6 +1079,15 @@ function renderSettings() {
   $('#list').innerHTML = `<div class="pad">
     <div class="field"><label>브리지 Bearer 토큰</label>
       <input id="tok" type="password" value="${esc(S.token)}" placeholder="~/.aside-remote/token"></div>
+    <div class="field" style="margin-top:6px"><label>테마</label>
+      <div class="themegrid">${THEMES.map(t => `
+        <button class="btn themebtn ${t.id === S.theme ? 'on' : ''}" data-theme-id="${esc(t.id)}">
+          <span class="sw">${t.sw.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span>
+          ${esc(t.label)}
+        </button>`).join('')}</div>
+      <div class="hint">더 바꾸고 싶으면 이 맥의 ~/.aside-remote/theme.css 에 CSS 변수를 덮어쓰세요.
+        모든 기기에 같이 적용됩니다. (README "테마")</div>
+    </div>
     <div class="field" style="margin-top:6px"><label>본문 폰트</label>
       <div class="fontgrid">${S.fonts.map(f => `
         <button class="btn fontbtn ${f.id === S.font ? 'on' : ''}" data-font="${esc(f.id)}"
@@ -1011,6 +1116,12 @@ function renderSettings() {
     localStorage.setItem('font', S.font);
     applyFont(S.font);
     lastKey = ''; renderSettings();
+  });
+  $('#list').querySelectorAll('.themebtn').forEach(b => b.onclick = () => {
+    S.theme = b.dataset.themeId;
+    localStorage.setItem('theme', S.theme);
+    applyTheme();
+    renderSettings();
   });
   $('#saveTok').onclick = () => {
     S.token = $('#tok').value.trim();
@@ -1219,16 +1330,77 @@ function zoom(src) {
   pushLayer('zoom');
 }
 
-// ─────────────────────────────────────────────── 탭 상세
+// ─────────────────────────────────────────────── 탭 상세 · 라이브 미리보기
+// 시트가 열려 있는 동안 5초마다 새로 캡처한다. 캡처는 브리지의 단일 REPL 을 쓰므로
+// 이전 캡처가 끝나야 다음을 예약한다 (겹쳐 쌓이지 않게). 일시정지·수동 새로고침 지원.
+const TAB_PREVIEW_INTERVAL = 5000;
+let tabPreview = null;   // { tab, timer, paused, loading, url, el }
+
+function stopTabPreview() {
+  const p = tabPreview;
+  if (!p) return;
+  tabPreview = null;
+  clearTimeout(p.timer);
+  if (p.url) URL.revokeObjectURL(p.url);
+}
+
+async function updateTabPreview(p, manual = false) {
+  if (tabPreview !== p || p.loading || (p.paused && !manual)) return;
+  p.loading = true;
+  const q = s => p.el.querySelector(s);
+  q('#pvRefresh').disabled = true;
+  q('#pvSt').className = 'st';
+  q('#pvSt').innerHTML = '<i class="spin"></i>업데이트 중…';
+  try {
+    const r = await fetch('/api/tabs/' + encodeURIComponent(p.tab.targetId) + '/shot?fresh=true&t=' + Date.now(), {
+      cache: 'no-store', headers: S.token ? { Authorization: 'Bearer ' + S.token } : {},
+    });
+    if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
+    const blob = await r.blob();
+    if (!blob.type.startsWith('image/')) throw new Error('이미지 응답이 아닙니다');
+    if (tabPreview !== p) return;
+    const url = URL.createObjectURL(blob);
+    if (p.url) URL.revokeObjectURL(p.url);
+    p.url = url;
+    q('.shot').src = url;
+    p.at = new Date();
+    tabPreviewStatus(p);
+  } catch (e) {
+    if (tabPreview !== p) return;
+    q('#pvSt').className = 'st err';
+    q('#pvSt').textContent = e.status === 409 || e.status === 502 || e.status === 503
+      ? '탭이 잠들어 미리보기를 업데이트할 수 없습니다'
+      : '미리보기를 업데이트하지 못했습니다';
+  } finally {
+    p.loading = false;
+    if (tabPreview === p) {
+      q('#pvRefresh').disabled = false;
+      clearTimeout(p.timer);
+      if (!p.paused) p.timer = setTimeout(() => updateTabPreview(p), TAB_PREVIEW_INTERVAL);
+    }
+  }
+}
+
+function tabPreviewStatus(p) {
+  const t = p.at ? p.at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  const st = p.el.querySelector('#pvSt');
+  st.className = 'st';
+  st.textContent = (p.paused ? '자동 업데이트 멈춤' : '5초마다 자동 업데이트') + (t ? ' · ' + t : '');
+}
+
 function showTab(t) {
   if (!t) return;
+  stopTabPreview();
   const m = document.createElement('div');
   m.className = 'mask';
   m.innerHTML = `<div class="sheet" onclick="event.stopPropagation()">
     <h3>${esc(t.title || '')}</h3>
     <div class="url">${esc(t.url || '')}</div>
     ${t.loaded
-      ? `<img class="shot" src="${esc(withTok('/api/tabs/' + t.targetId + '/shot?fresh=true'))}">`
+      ? `<img class="shot" alt="">
+         <div class="pvbar"><span class="st" id="pvSt"></span>
+           <button class="btn" id="pvRefresh">지금 새로고침</button>
+           <button class="btn" id="pvPause">일시정지</button></div>`
       : `<div class="empty">크롬이 메모리를 회수한 잠든 탭입니다.<br>
            캡처하려면 다시 열어야 합니다.</div>`}
     <textarea id="instr">이 페이지 내용을 한국어로 요약해줘.</textarea>
@@ -1243,6 +1415,17 @@ function showTab(t) {
   document.body.appendChild(m);
   pushLayer('sheet');
   const q = s => m.querySelector(s);
+  if (t.loaded) {
+    const p = tabPreview = { tab: t, el: m, paused: false, loading: false, timer: 0, url: null, at: null };
+    q('#pvRefresh').onclick = () => updateTabPreview(p, true);
+    q('#pvPause').onclick = () => {
+      p.paused = !p.paused;
+      q('#pvPause').textContent = p.paused ? '다시 시작' : '일시정지';
+      clearTimeout(p.timer);
+      if (p.paused) tabPreviewStatus(p); else updateTabPreview(p);
+    };
+    updateTabPreview(p);
+  }
   q('#ask') && (q('#ask').onclick = () => {
     const instr = q('#instr').value;
     closeLayer();                       // 시트 엔트리를 먼저 걷어내고 이동한다
@@ -1260,6 +1443,79 @@ function showTab(t) {
     api('/api/tabs/' + t.targetId, { method: 'DELETE' })
       .then(() => { closeLayer(); loadTabs(true); }).catch(showErr);
   };
+}
+
+// 헤더의 미리보기 버튼: 활성 탭(없으면 살아있는 첫 탭)을 바로 연다.
+async function showPreferredTab() {
+  const b = $('#browserPreview');
+  b.disabled = true;
+  try {
+    S.tabs = (await api('/api/tabs?refresh=true')).tabs;
+    const t = S.tabs.find(x => x.active && x.loaded) || S.tabs.find(x => x.loaded) || S.tabs[0];
+    if (!t) throw new Error('미리볼 브라우저 탭이 없습니다');
+    showTab(t);
+  } catch (e) { showErr(e); }
+  finally { b.disabled = false; }
+}
+
+// ─────────────────────────────────────────────── 대화 삭제
+// 지우면 로컬 세션 파일까지 사라진다 → 반드시 확인을 받는다. 실행 중이면 서버가 409 로 거부한다.
+function confirmDelete(x) {
+  if (!x || S.deletingId) return;
+  const m = document.createElement('div');
+  m.className = 'mask';
+  m.innerHTML = `<div class="sheet" style="max-width:420px" onclick="event.stopPropagation()">
+    <h3>대화를 삭제할까요?</h3>
+    <div class="msg"><b>${esc(x.title)}</b><br>대화와 로컬 세션 파일이 영구히 삭제됩니다. 되돌릴 수 없습니다.</div>
+    <div class="msg err" id="delErr" hidden></div>
+    <div class="acts">
+      <button class="btn danger" id="delOk">삭제</button>
+      <button class="btn" id="delNo">취소</button>
+    </div></div>`;
+  m.onclick = () => { if (!S.deletingId) closeLayer(); };
+  document.body.appendChild(m);
+  pushLayer('sheet');
+  const q = s => m.querySelector(s);
+  q('#delNo').onclick = () => { if (!S.deletingId) closeLayer(); };
+  q('#delNo').focus();
+  q('#delOk').onclick = async () => {
+    if (S.deletingId) return;
+    S.deletingId = x.id;
+    q('#delOk').disabled = q('#delNo').disabled = true;
+    q('#delOk').innerHTML = '<i class="spin"></i> 삭제 중…';
+    q('#delErr').hidden = true;
+    render();
+    try {
+      await api('/api/sessions/' + encodeURIComponent(x.id), { method: 'DELETE' });
+      S.deletingId = null;
+      // history.back() 은 비동기다. 바로 removeSession 이 navigate 하면 뒤늦은 popstate 가
+      // 지운 대화의 주소로 되돌려 다시 연다 → 시트가 닫힌(popstate) 뒤에 걷어낸다.
+      if (m.isConnected) {
+        addEventListener('popstate', () => removeSession(x.id), { once: true });
+        closeLayer();
+      } else removeSession(x.id);
+    } catch (e) {
+      S.deletingId = null;
+      let msg = e.message;
+      try { msg = JSON.parse(e.body).detail || msg; } catch {}
+      q('#delErr').textContent = msg; q('#delErr').hidden = false;
+      q('#delOk').disabled = q('#delNo').disabled = false;
+      q('#delOk').textContent = '삭제';
+      render();
+    }
+  };
+}
+
+// 목록과 열린 대화에서 걷어낸다. 다른 기기에서 지운 것도 WS(session.deleted)로 여기에 온다.
+function removeSession(id) {
+  const had = S.sessions.some(x => x.id === id);
+  if (!had && S.sessionId !== id) return;
+  ++loadSeq;                                     // 진행 중인 목록 요청이 지운 걸 되살리지 못하게
+  S.loadingMore = false;
+  S.sessions = S.sessions.filter(x => x.id !== id);
+  if (had) { S.total = Math.max(0, S.total - 1); S.matched = Math.max(0, S.matched - 1); }
+  if (S.sessionId === id) navigate({ sessionId: null }, { replace: true });
+  loadSessions(); render();
 }
 
 // ─────────────────────────────────────────────── 데이터
@@ -1282,12 +1538,16 @@ async function loadSessions(mode = 'merge') {
   try {
     const r = await api('/api/sessions?' + p);
     if (mine !== loadSeq) return;
-    const by = new Map(mode === 'reset' ? [] : S.sessions.map(x => [x.id, x]));
+    // merge 는 1페이지 범위 안의 기존 항목을 버린다 — 서버에서 사라진(삭제된) 대화가 남지 않게.
+    const prev = mode === 'more' ? S.sessions
+      : (mode === 'merge' && r.nextCursor
+          ? S.sessions.filter(x => (x.mtime || 0) < (r.items.at(-1)?.mtime || 0)) : []);
+    const by = new Map(prev.map(x => [x.id, x]));
     for (const x of r.items) by.set(x.id, x);   // 서버 값이 항상 이긴다
     S.sessions = [...by.values()].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
     // merge 는 1페이지만 덧칠하는 새로고침이다. 커서를 건드리면 끝까지 펼쳐둔 목록에
     // '더보기' 가 되살아나거나, 중간까지 본 진척이 1페이지로 되감긴다.
-    if (mode !== 'merge' || wasEmpty) S.cursor = r.nextCursor;
+    if (mode !== 'merge' || wasEmpty || !r.nextCursor) S.cursor = r.nextCursor;
     S.total = r.total; S.matched = r.matched; S.listErr = null;
   } catch (e) {
     if (mine !== loadSeq) return;
@@ -1323,7 +1583,7 @@ function refreshAll() { loadSessions(); if (S.view === 'tabs') loadTabs(); poll(
 
 // 아래 둘은 "적용" 만 한다. 히스토리는 navigate/applyState 가 책임진다.
 async function openSession(id) {
-  if (S.sessionId && S.sessionId !== id) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  if (S.sessionId && S.sessionId !== id) sendWhenConnected({ op: 'unsub', sessionId: S.sessionId });
   S.sessionId = id; S.msgs = []; S.pending = null; S.err = null; S.holdTurn = false;
   localStorage.setItem('lastSession', id);
   render();
@@ -1337,12 +1597,12 @@ async function openSession(id) {
       history.replaceState(curState(), '', urlOf(curState())); render(); return;
     }
   } catch (e) { showErr(e); }
-  ws?.send(JSON.stringify({ op: 'sub', sessionId: id, fromSeq: S.nextSeq, fromOffset: S.offset }));
+  sendWhenConnected({ op: 'sub', sessionId: id, fromSeq: S.nextSeq, fromOffset: S.offset });
   render();
 }
 
 function clearSession() {
-  if (S.sessionId) ws?.send(JSON.stringify({ op: 'unsub', sessionId: S.sessionId }));
+  if (S.sessionId) sendWhenConnected({ op: 'unsub', sessionId: S.sessionId });
   S.sessionId = null; S.msgs = []; S.running = false; S.pending = null; S.err = null; S.holdTurn = false;
   localStorage.removeItem('lastSession');
 }
@@ -1350,6 +1610,7 @@ function clearSession() {
 function newChat() { navigate({ view: 'chats', sessionId: null }); $('#draft').focus(); }
 
 function send(prompt) {
+  if (S.deletingId && S.deletingId === S.sessionId) return;
   const pending = S.atts.filter(a => !a.id).length;
   if (pending) { S.err = '이미지 업로드 중입니다…'; render(); return; }
   const attachments = S.atts.filter(a => a.id).map(a => ({ id: a.id, name: a.name }));
@@ -1370,6 +1631,8 @@ function send(prompt) {
 
 // ─────────────────────────────────────────────── WebSocket
 let ws = null, backoff = 0;
+// 연결 중(CONNECTING)인 소켓에 send 하면 예외가 난다. 재연결 시 onopen 이 sub 를 다시 보낸다.
+function sendWhenConnected(msg) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 function connect() {
   if (!S.token) return;
   try { ws?.close(); } catch {}
@@ -1416,6 +1679,7 @@ function connect() {
         }
       }
       loadSessions(); }
+    else if (m.op === 'session.deleted') removeSession(m.sessionId);
     else if (m.op === 'error') { S.err = m.message || m.error; S.running = false; S.pending = null; }
     render();
   };
@@ -1515,6 +1779,14 @@ const isMobile = () => innerWidth <= 820;
 // window.Capacitor 가 있으면 네이티브 기능을 쓸 수 있고, 없으면(=일반 브라우저) 조용히 넘어간다.
 const native = () => !!(window.Capacitor?.isNativePlatform?.());
 
+// 시스템 바 아이콘 명암을 테마에 맞춘다 (바 배경은 투명 → 웹 배경이 비친다)
+async function syncNativeBars() {
+  if (!native()) return;
+  try {
+    await window.Capacitor.Plugins?.SafeArea?.setSystemBarsStyle?.({ style: isDark() ? 'DARK' : 'LIGHT' });
+  } catch {}
+}
+
 async function initNative() {
   if (!native()) return;
   document.documentElement.classList.add('native');
@@ -1527,15 +1799,7 @@ async function initNative() {
       canGoBack ? history.back() : P.App?.exitApp?.());
   } catch {}
 
-  // 시스템 바 아이콘 명암을 테마에 맞춘다 (바 배경은 투명 → 웹 배경이 비친다)
-  const syncBars = async () => {
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    try {
-      await P.SafeArea?.setSystemBarsStyle?.({ style: dark ? 'DARK' : 'LIGHT' });
-    } catch {}
-  };
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncBars);
-  syncBars();
+  syncNativeBars();
 
   // 앱이 다시 앞으로 오면 상태를 새로 읽는다 (백그라운드 동안 실행이 끝났을 수 있다)
   try {
@@ -1631,6 +1895,8 @@ $('#msgs').addEventListener('click', e => {
 // 목록 클릭은 위임으로 받는다 — 리스트가 다시 그려져도 핸들러가 사라지지 않는다.
 $('#list').addEventListener('click', e => {
   if (e.target.closest('#more')) return loadSessions('more');
+  const del = e.target.closest('.cdel');
+  if (del) return del.disabled || confirmDelete(S.sessions.find(x => x.id === del.dataset.del));
   const card = e.target.closest('.card');
   if (card) return navigate({ view: 'chats', sessionId: card.dataset.id },
                             { replace: card.dataset.id === S.sessionId });
@@ -1653,6 +1919,7 @@ document.querySelectorAll('.seg').forEach(b => b.onclick = () =>
   navigate({ view: b.dataset.view, layer: isMobile() ? 'drawer' : undefined }));
 $('#refresh').onclick = () => S.view === 'tabs' ? loadTabs(true) : refreshAll();
 $('#newChat').onclick = newChat;
+$('#browserPreview').onclick = showPreferredTab;
 $('#attach').onclick = pickImage;
 $('#filePick').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
 // 붙여넣기·드래그로도 첨부되게
@@ -1712,6 +1979,7 @@ async function boot() {
       if (t) { S.token = t; localStorage.setItem('token', t); }
     }
   } catch {}
+  applyTheme();
   loadFonts();
   initNative();
   connect();

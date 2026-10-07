@@ -206,6 +206,15 @@ async def vendor(name: str):
                         headers={"Cache-Control": "public, max-age=604800"})
 
 
+@app.get("/theme.css")
+async def theme_css():
+    """사용자 테마. 이 맥의 파일이라 그대로 내보낸다. 없으면 빈 CSS — 404 를 내면 콘솔이 시끄럽다."""
+    if config.THEME_CSS.is_file():
+        return FileResponse(config.THEME_CSS, media_type="text/css; charset=utf-8",
+                            headers={"Cache-Control": "no-cache"})
+    return Response("", media_type="text/css; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/icons/{name}")
 async def icon(name: str):
     p = WEB_DIR / "icons" / name
@@ -292,6 +301,9 @@ async def launch_aside():
 
 
 # ------------------------------------------------------------------ 세션
+SESSION_RUNNING_MESSAGE = "실행을 중단한 뒤 대화를 삭제해 주세요"
+
+
 @app.get("/api/sessions", dependencies=[Auth])
 async def api_sessions(
     limit: int = Query(30, ge=1, le=100),
@@ -299,6 +311,32 @@ async def api_sessions(
     q: str | None = Query(None, description="제목·미리보기 전체 검색 (로드된 페이지가 아니라 전 구간)"),
 ):
     return await sessions.list_sessions(_http, limit=limit, cursor=cursor, q=q)
+
+
+@app.delete("/api/sessions/{session_id}", dependencies=[Auth])
+async def api_delete_session(session_id: str):
+    async with runner.session_lock:
+        if not re.fullmatch(r"[A-Za-z0-9]{12,32}", session_id) or sessions.session_dir(session_id) is None:
+            raise HTTPException(404, runner.SESSION_NOT_FOUND_MESSAGE)
+        run = runner.get_run(session_id)
+        if run and run.running:
+            raise HTTPException(409, SESSION_RUNNING_MESSAGE)
+        try:
+            recents = await sessions.live_sessions()
+        except (OSError, TimeoutError, RuntimeError):
+            raise HTTPException(503, "Aside 실행 상태를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요")
+        if any(s.get("id") == session_id and s.get("status") == "running" for s in recents):
+            raise HTTPException(409, SESSION_RUNNING_MESSAGE)
+        try:
+            is_deleted = await runner.delete_session(session_id)
+        except TimeoutError:
+            raise HTTPException(504, "삭제 응답이 지연됐습니다. 목록을 새로고침해 결과를 확인해 주세요")
+        except OSError:
+            raise HTTPException(503, "Aside CLI를 실행할 수 없습니다")
+        if not is_deleted:
+            raise HTTPException(502, "Aside에서 대화를 삭제하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요")
+    await hub.forget_session(session_id)
+    return {"deleted": True, "sessionId": session_id}
 
 
 @app.get("/api/sessions/{session_id}/messages", dependencies=[Auth])
@@ -376,7 +414,12 @@ async def api_continue(session_id: str, payload: dict):
         raise HTTPException(409, "이미 실행 중입니다")
     # `aside session resume` takes no model/effort/speed options — the session
     # keeps the settings it was created with.
-    run = await runner.continue_run(session_id, prompt)
+    try:
+        run = await runner.continue_run(session_id, prompt)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc))
     return JSONResponse({"sessionId": session_id, "running": run.running}, status_code=202)
 
 
@@ -526,6 +569,7 @@ class Hub:
     """세션별 tail 태스크를 소켓들이 공유한다."""
 
     def __init__(self) -> None:
+        self.clients: set[WebSocket] = set()
         self._subs: dict[str, set[WebSocket]] = {}
         self._tasks: dict[str, asyncio.Task] = {}
 
@@ -557,6 +601,12 @@ class Hub:
                 dead.append(ws)
         for ws in dead:
             self.unsubscribe(ws)
+
+    async def forget_session(self, session_id: str) -> None:
+        for ws in list(self.clients):
+            await _send(ws, {"op": "session.deleted", "sessionId": session_id})
+        for ws in list(self._subs.get(session_id, ())):
+            self.unsubscribe(ws, session_id)
 
     async def _pump(self, session_id: str, offset: int, seq: int) -> None:
         try:
@@ -633,6 +683,7 @@ async def ws_endpoint(ws: WebSocket):
             await ws.close(code=4401)
             return
     await ws.accept()
+    hub.clients.add(ws)
     hb = asyncio.create_task(_heartbeat(ws))
     try:
         await ws.send_text(json.dumps({"op": "hello", "running": runner.running_ids()}))
@@ -649,6 +700,7 @@ async def ws_endpoint(ws: WebSocket):
         log.exception("ws error")
     finally:
         hb.cancel()
+        hub.clients.discard(ws)
         hub.unsubscribe(ws)
         with contextlib.suppress(Exception):
             await ws.close()

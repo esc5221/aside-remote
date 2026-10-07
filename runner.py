@@ -23,6 +23,7 @@ import logging
 import os
 import pty
 import re
+import shutil
 import signal
 import struct
 import termios
@@ -33,8 +34,9 @@ import config
 import sessions
 
 log = logging.getLogger("aside-remote.runner")
+SESSION_NOT_FOUND_MESSAGE = "대화를 찾을 수 없습니다"
 
-_spawn_lock = asyncio.Lock()
+session_lock = asyncio.Lock()
 
 
 @dataclass
@@ -150,26 +152,13 @@ def _exec_opts(*, model: str | None = None, effort: str | None = None,
     return args
 
 
-_ID_RE = re.compile(r"^([A-Za-z0-9]{12,32})\s")
-
-
 async def list_session_ids() -> list[str]:
     """`aside session list` 의 id 목록(최신순). 실패하면 빈 리스트."""
     try:
-        proc = await asyncio.create_subprocess_exec(
-            config.ASIDE_BIN, "session", "list", *_account_args(),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        return [s["id"] for s in await sessions.live_sessions()]
     except Exception:
         log.warning("session list failed", exc_info=True)
         return []
-    ids = []
-    for line in _strip_ansi(out.decode("utf-8", "replace")).splitlines():
-        m = _ID_RE.match(line.strip())
-        if m:
-            ids.append(m.group(1))
-    return ids
 
 
 def _newest_real_dir(names: set[str]) -> str | None:
@@ -196,7 +185,7 @@ async def start_run(prompt: str, *, model: str | None = None, effort: str | None
                                 provider=provider, permission=permission, host=host),
             prompt]
 
-    async with _spawn_lock:
+    async with session_lock:
         before_ids = set(await list_session_ids())
         before_dirs = sessions.snapshot_dirs()
         proc, master = await _spawn(args)
@@ -261,10 +250,16 @@ async def continue_run(session_id: str, prompt: str, *, model: str | None = None
         log.info("resume ignores exec-only options %s (session=%s)", ignored, session_id)
 
     args = ["session", "resume", *_account_args(), session_id, prompt]
-    proc, master = await _spawn(args)
-    run = Run(session_id=session_id, prompt=prompt, proc=proc, master_fd=master)
-    _runs[session_id] = run
-    asyncio.create_task(_drain(run))
+    async with session_lock:
+        if sessions.session_dir(session_id) is None:
+            raise FileNotFoundError(SESSION_NOT_FOUND_MESSAGE)
+        existing = _runs.get(session_id)
+        if existing and existing.running:
+            raise FileExistsError("이미 실행 중입니다")
+        proc, master = await _spawn(args)
+        run = Run(session_id=session_id, prompt=prompt, proc=proc, master_fd=master)
+        _runs[session_id] = run
+        asyncio.create_task(_drain(run))
     log.info("run continued session=%s", session_id)
     return run
 
@@ -307,6 +302,38 @@ async def stop_session(session_id: str) -> bool:
     text = _strip_ansi(out.decode("utf-8", "replace")).strip()
     log.info("session stop session=%s rc=%s out=%s", session_id, proc.returncode, text[:120])
     return proc.returncode == 0
+
+
+async def delete_session(session_id: str) -> bool:
+    directory = sessions.session_dir(session_id)
+    if directory is None or directory.resolve().parent != config.SESSIONS_DIR.resolve():
+        return False
+    proc = await asyncio.create_subprocess_exec(
+        config.ASIDE_BIN, "session", "delete", *_account_args(), session_id,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except (TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+        raise
+    text = _strip_ansi(out.decode("utf-8", "replace")).strip()
+    log.info("session delete session=%s rc=%s out=%s", session_id, proc.returncode, text[:120])
+    if proc.returncode != 0 and text != "Session not found":
+        return False
+    try:
+        await asyncio.to_thread(shutil.rmtree, directory)
+    except OSError:
+        log.exception("session files deletion failed session=%s", session_id)
+        return False
+    _runs.pop(session_id, None)
+    sessions.invalidate_index()
+    return True
 
 
 async def steer(session_id: str, prompt: str) -> bool:

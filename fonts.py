@@ -34,6 +34,13 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 # 화이트리스트 — 임의 URL 프록시가 되지 않게 정확히 아는 것만 허용한다.
 FAMILIES: dict[str, dict] = {
+    "wanted-sans": {
+        "label": "Wanted Sans",
+        "kind": "sans",
+        "css": ("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/"
+                "fonts/webfonts/variable/split/WantedSansVariable.min.css"),
+        "stack": '"Wanted Sans Variable", "Wanted Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+    },
     "noto-serif-kr": {
         "label": "Noto Serif KR",
         "kind": "serif",

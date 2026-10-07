@@ -8,16 +8,19 @@ phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:879
                                                           ├─ aside mcp    persistent process = browser REPL
                                                           ├─ aside exec   PTY = agent runs
                                                           ├─ messages.jsonl tail = live streaming
-                                                          └─ daemon :21420 = session status
+                                                          └─ aside session list = session status
 ```
 
 What you get:
 
 - **Chat UI** for your Aside agent — conversation list (search, paging), streaming
   answers with tool-activity folded into pills, image attachments (camera on phones),
-  markdown/code rendering, dark mode, Korean serif typography.
+  markdown/code rendering, themes (light / dark / Linear dark / your own CSS),
+  Korean serif typography.
+- **Conversation deletion** — with confirmation; removes the conversation and its local
+  session files. Running conversations must be stopped first.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
-  work on any tab.
+  work on any tab, and open a live preview that refreshes every 5 s (pause / refresh now).
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
 - Optional **push notification** (ntfy) when a run finishes.
 
@@ -122,6 +125,47 @@ chrome.* in repl       tabs.query allowed (that's where lastAccessed for tab ord
 ```
 
 An Aside update can invalidate any line above. If something breaks, check these first.
+
+## Themes
+
+Settings → 테마 picks a preset: system (follows the OS light/dark setting), light, dark,
+or Linear dark. The choice is stored per browser.
+
+For anything beyond the presets, create `~/.aside-remote/theme.css` on the Mac running the
+bridge (path overridable with `ASIDE_REMOTE_THEME_CSS`). It is served at `/theme.css` and
+loaded after the built-in styles, so it applies to every device and wins over the presets.
+No restart needed — reload the page.
+
+Every color is a CSS variable on `:root`; override those rather than component selectors,
+and your theme survives UI updates:
+
+```css
+/* ~/.aside-remote/theme.css */
+:root { --accent: #2f7d5b; --accent-dim: #2f7d5b; }        /* all presets */
+:root[data-theme="dark"] { --bg: #101418; --surface: #161b21; }  /* only the dark preset */
+```
+
+`<html data-theme>` always holds the theme actually drawn (`light`, `dark` or `linear`),
+never `auto`, so you can target one preset.
+
+```
+variable                     role
+--bg --surface --surface2    page / cards / hover and chips
+--composer                   input box
+--text --dim --faint         primary / secondary / muted text
+--line --line2               borders (strong / soft)
+--accent --accent-dim        buttons, selection, links in tool chips
+--bubble                     user message bubble
+--err --ok --warn            status colors
+--code-bg --code-fg --code-line --code-bar --code-dim     code blocks
+--c-comment --c-key --c-str --c-num --c-fn --c-type --c-attr --c-meta   syntax highlight
+--sbar --sbar-hi             scrollbar thumb
+--font-body --font-ui        body font (also set from Settings) / UI font
+```
+
+New presets are welcome as PRs: add a `:root[data-theme="<id>"]` block that sets the
+variables above and an entry in `THEMES` in `web/index.html`. Please keep layout changes
+out of theme PRs.
 
 ## Development
 
