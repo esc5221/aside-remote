@@ -15,7 +15,8 @@ What you get:
 
 - **Chat UI** for your Aside agent — conversation list (search, paging), streaming
   answers with tool-activity folded into pills, image attachments (camera on phones),
-  markdown/code rendering, Linear Dark styling, selectable body fonts, Remix icons.
+  markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
+  Wanted Sans, and outline icons. Change the theme in Settings → Appearance; the choice persists after reload.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
   work on any tab, and open a live preview sheet with pause and manual refresh.
 - **Conversation deletion** — confirm before deleting a conversation and its local
@@ -23,22 +24,25 @@ What you get:
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
 - Optional **push notification** (ntfy) when a run finishes.
 
-The UI language is currently Korean. PRs welcome.
+The UI language is English. Conversation content keeps its original language.
 
-The app uses a fixed dark theme with compact spacing. [DESIGN.md](DESIGN.md)
-documents the Linear reference, local adaptations, tokens, and responsive rules.
+The app follows a ChatGPT iOS-inspired conversation layout with an anchored composer.
+[DESIGN.md](DESIGN.md) documents the reference, tokens, states, and responsive rules.
 
 ## Requirements
 
 - macOS with the [Aside](https://aside.dev) app installed and signed in
   (the bridge drives Aside's own CLI — it has no AI keys of its own)
 - Python ≥ 3.10
+- Node.js ≥ 22.12 and npm for building the frontend
 
 ## Quick start
 
 ```bash
 git clone <this repo> && cd aside-remote
 pip install -r requirements.txt
+npm ci
+npm run build
 python3 scripts/setup.py        # guided; --yes for defaults
 python3 server.py               # or let the wizard install a launchd service
 ```
@@ -53,7 +57,7 @@ that work well:
 
 **Tailscale / VPN** — simplest. `ASIDE_REMOTE_HOST=<tailscale-ip>` (or keep loopback
 and use `tailscale serve`), open `http://<mac>:8799`, paste the bearer token from
-`~/.aside-remote/token` once in 설정 (Settings).
+`~/.aside-remote/token` once in Settings.
 
 **Cloudflare Tunnel + Access** — what this repo is built around. Sketch:
 
@@ -131,13 +135,20 @@ An Aside update can invalidate any line above. If something breaks, check these 
 ## Development
 
 ```bash
-python3 server.py                      # dev run (uvicorn, port 8799)
-node tests/boot.test.mjs               # UI boot smoke test (needs: npm i jsdom)
+npm ci
+npm run build                         # type-check and build web/dist
+python3 server.py                      # serve the production UI on port 8799
+npm test                              # production-bundle UI smoke checks
+
+# Development frontend: run the bridge on port 8800 in another terminal
+ASIDE_REMOTE_PORT=8800 python3 server.py
+npm run dev                           # Vite on port 5173, proxies APIs and WS to 8800
 ```
 
-The web UI is a single dependency-free `web/index.html`. Functional UI icons use a
-local SVG sprite from Remix Icon 4.9.1. Bundled third-party licenses are in NOTICE
-and `web/vendor/remixicon.LICENSE`.
+The frontend uses React, TypeScript, StyleX, and React Compiler with Vite.
+Source lives in `web/src`; the Python bridge serves the built `web/dist` files.
+Build the frontend before starting the bridge. Markdown and browser panels load
+on demand. Bundled third-party licenses are listed in NOTICE.
 
 ## License
 

@@ -95,7 +95,7 @@ async def _tab_asleep_handler(_request: Request, exc: browser.TabAsleep):
     """잠든 탭은 깨울 방법이 없다(chrome.tabs.update 차단). 앱은 openTab 으로 유도한다."""
     return JSONResponse({
         "error": "tab_asleep",
-        "detail": "크롬이 메모리 회수한 잠든 탭이라 캡처/읽기가 불가능합니다.",
+        "detail": "Chrome discarded this tab to save memory, so it cannot be captured or read.",
         "action": "open_url",
         "url": exc.tab.get("url"),
         "tab": exc.tab,
@@ -138,6 +138,7 @@ async def _shutdown() -> None:
 
 # ------------------------------------------------------------------ 웹 UI
 WEB_DIR = config.BASE_DIR / "web"
+WEB_DIST_DIR = WEB_DIR / "dist"
 
 
 @app.get("/")
@@ -146,11 +147,25 @@ async def web_index():
 
     HTML 자체에는 데이터가 없다 — 세션/탭/미디어는 전부 토큰이 붙은 API 호출로만 나간다.
     """
-    f = WEB_DIR / "index.html"
+    f = WEB_DIST_DIR / "index.html"
     if not f.exists():
-        raise HTTPException(404, "web UI not installed")
+        raise HTTPException(503, "Web UI is not built. Run `npm run build`.")
     return FileResponse(f, media_type="text/html; charset=utf-8",
                         headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/assets/{path:path}")
+async def web_asset(path: str):
+    root = (WEB_DIST_DIR / "assets").resolve()
+    asset = (root / path).resolve()
+    try:
+        asset.relative_to(root)
+    except ValueError:
+        raise HTTPException(404, "not found")
+    if not asset.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(asset,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.get("/api/web-token")
@@ -160,8 +175,10 @@ async def web_token(request: Request):
     헤더 문자열을 믿지 않고 `cf-access-jwt-assertion` 을 Cloudflare 공개키로 서명 검증한다.
     로컬(127.0.0.1)에서 직접 부르는 경우는 이미 이 맥 안이라 그대로 허용한다.
     """
-    host = (request.headers.get("host") or "").split(":")[0]
-    if host in ("127.0.0.1", "localhost", "::1"):
+    host = request.url.hostname or ""
+    client_host = request.client.host if request.client else ""
+    loopback_hosts = ("127.0.0.1", "localhost", "::1")
+    if host in loopback_hosts and client_host in loopback_hosts:
         return _token_response(request, "loopback", None)
 
     assertion = request.headers.get("cf-access-jwt-assertion")
@@ -175,6 +192,12 @@ async def web_token(request: Request):
         raise HTTPException(403, "Access assertion rejected")
     log.info("web-token issued to %s", email)
     return _token_response(request, "cf-access", email)
+
+
+@app.post("/api/auth", dependencies=[Auth])
+async def api_auth(request: Request):
+    """검증된 수동 bearer token 을 브라우저의 HttpOnly WebSocket 쿠키로 옮긴다."""
+    return _token_response(request, "bearer", None)
 
 
 def _token_response(request: Request, via: str, email: str | None) -> JSONResponse:
@@ -288,11 +311,11 @@ async def launch_aside():
         await asyncio.sleep(0.5)
         if _aside_app_running():
             return {"ok": True, "already": False}
-    return JSONResponse({"ok": False, "error": "Aside.app 기동 실패"}, status_code=503)
+    return JSONResponse({"ok": False, "error": "Could not launch Aside.app"}, status_code=503)
 
 
 # ------------------------------------------------------------------ 세션
-SESSION_RUNNING_MESSAGE = "실행을 중단한 뒤 대화를 삭제해 주세요"
+SESSION_RUNNING_MESSAGE = "Stop the run before deleting this conversation"
 
 
 @app.get("/api/sessions", dependencies=[Auth])
@@ -315,17 +338,17 @@ async def api_delete_session(session_id: str):
         try:
             recents = await sessions.live_sessions()
         except (OSError, TimeoutError, RuntimeError):
-            raise HTTPException(503, "Aside 실행 상태를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요")
+            raise HTTPException(503, "Could not check the current Aside run status. Try again shortly.")
         if any(s.get("id") == session_id and s.get("status") == "running" for s in recents):
             raise HTTPException(409, SESSION_RUNNING_MESSAGE)
         try:
             is_deleted = await runner.delete_session(session_id)
         except TimeoutError:
-            raise HTTPException(504, "삭제 응답이 지연됐습니다. 목록을 새로고침해 결과를 확인해 주세요")
+            raise HTTPException(504, "The delete request timed out. Refresh the list to check the result.")
         except OSError:
-            raise HTTPException(503, "Aside CLI를 실행할 수 없습니다")
+            raise HTTPException(503, "Could not run the Aside CLI")
         if not is_deleted:
-            raise HTTPException(502, "Aside에서 대화를 삭제하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요")
+            raise HTTPException(502, "Aside could not delete the conversation. Refresh the list and try again.")
     await hub.forget_session(session_id)
     return {"deleted": True, "sessionId": session_id}
 
@@ -389,7 +412,7 @@ async def api_run(payload: dict):
         host=payload.get("host"),
     )
     if not run.session_id:
-        raise HTTPException(502, run.error or "세션 시작 실패")
+        raise HTTPException(502, run.error or "Could not start the conversation")
     return JSONResponse({"sessionId": run.session_id, "running": run.running}, status_code=202)
 
 
@@ -402,7 +425,7 @@ async def api_continue(session_id: str, payload: dict):
         raise HTTPException(404, "unknown session")
     existing = runner.get_run(session_id)
     if existing and existing.running:
-        raise HTTPException(409, "이미 실행 중입니다")
+        raise HTTPException(409, "This conversation is already running")
     # `aside session resume` takes no model/effort/speed options — the session
     # keeps the settings it was created with.
     try:
@@ -645,7 +668,7 @@ async def push_ntfy(session_id: str, run: "runner.Run") -> None:
     except Exception:
         pass
     body = [ln for ln in (run.output or "").strip().splitlines() if ln.strip()]
-    tail = "\n".join(body[-6:])[:600] or ("실패" if run.exit_code else "완료")
+    tail = "\n".join(body[-6:])[:600] or ("Failed" if run.exit_code else "Complete")
     try:
         await _http.post(
             config.NTFY_URL,
@@ -662,6 +685,90 @@ async def push_ntfy(session_id: str, run: "runner.Run") -> None:
 
 
 hub = Hub()
+
+_RUN_REQUEST_TTL_SEC = 10 * 60
+_RUN_REQUEST_MAX = 256
+_run_requests: dict[str, dict] = {}
+
+
+def _prune_run_requests() -> None:
+    cutoff = time.monotonic() - _RUN_REQUEST_TTL_SEC
+    expired = [request_id for request_id, item in _run_requests.items()
+               if item["status"] != "pending" and item["updatedAt"] < cutoff]
+    for request_id in expired:
+        _run_requests.pop(request_id, None)
+
+
+def _begin_run_request(request_id: str) -> tuple[dict | None, bool]:
+    _prune_run_requests()
+    existing = _run_requests.get(request_id)
+    if existing:
+        return existing, False
+    if len(_run_requests) >= _RUN_REQUEST_MAX:
+        completed = sorted(
+            ((item["updatedAt"], rid) for rid, item in _run_requests.items()
+             if item["status"] != "pending"),
+        )
+        while len(_run_requests) >= _RUN_REQUEST_MAX and completed:
+            _run_requests.pop(completed.pop(0)[1], None)
+    if len(_run_requests) >= _RUN_REQUEST_MAX:
+        return None, False
+    item = {"status": "pending", "updatedAt": time.monotonic()}
+    _run_requests[request_id] = item
+    return item, True
+
+
+def _finish_run_request(request_id: str, status: str, *, session_id: str | None = None,
+                        message: str | None = None) -> None:
+    item = {"status": status, "updatedAt": time.monotonic()}
+    if session_id:
+        item["sessionId"] = session_id
+    if message:
+        item["message"] = message
+    _run_requests[request_id] = item
+
+
+def _public_run_request(item: dict) -> dict:
+    return {key: item[key] for key in ("status", "sessionId", "message") if key in item}
+
+
+async def _send_run_request(ws: WebSocket, request_id: str, item: dict) -> None:
+    status = item["status"]
+    if status == "started":
+        await _send(ws, {"op": "run.started", "requestId": request_id,
+                         "sessionId": item["sessionId"]})
+    elif status == "error":
+        await _send(ws, {"op": "error", "requestId": request_id,
+                         "message": item["message"]})
+    else:
+        await _send(ws, {"op": "run.pending", "requestId": request_id})
+
+
+async def _claim_run_request(ws: WebSocket, request_id) -> tuple[str | None, bool]:
+    if request_id is None:
+        return None, True
+    if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id):
+        await _send(ws, {"op": "error", "requestId": request_id,
+                         "message": "Invalid requestId"})
+        return None, False
+    item, is_new = _begin_run_request(request_id)
+    if item is None:
+        await _send(ws, {"op": "error", "requestId": request_id,
+                         "message": "Too many run requests are pending. Try again shortly."})
+        return None, False
+    if not is_new:
+        await _send_run_request(ws, request_id, item)
+        return request_id, False
+    return request_id, True
+
+
+@app.get("/api/run-requests/{request_id}", dependencies=[Auth])
+async def api_run_request(request_id: str):
+    _prune_run_requests()
+    item = _run_requests.get(request_id)
+    if not item:
+        raise HTTPException(404, "Unknown or expired run request")
+    return _public_run_request(item)
 
 
 @app.websocket("/ws")
@@ -732,9 +839,15 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         return
 
     if op == "run":
+        run_request_id, should_execute = await _claim_run_request(ws, rid)
+        if not should_execute:
+            return
         prompt = _with_attachments(msg)
         if not prompt:
-            await _send(ws, {"op": "error", "requestId": rid, "message": "prompt required"})
+            message = "prompt required"
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=message)
+            await _send(ws, {"op": "error", "requestId": rid, "message": message})
             return
         try:
             run = await runner.start_run(prompt, model=msg.get("model"),
@@ -743,36 +856,57 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
                                          permission=msg.get("permission"),
                                          host=msg.get("host"))
         except Exception as exc:
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=str(exc))
             await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
             return
         if not run.session_id:
+            message = run.error or "Could not start the conversation"
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=message)
             await _send(ws, {"op": "error", "requestId": rid,
-                             "message": run.error or "세션 시작 실패"})
+                             "message": message})
             return
+        if run_request_id:
+            _finish_run_request(run_request_id, "started", session_id=run.session_id)
         await hub.subscribe(ws, run.session_id, 0, 0)
         asyncio.create_task(hub.watch_run(run))
         await _send(ws, {"op": "run.started", "requestId": rid, "sessionId": run.session_id})
         return
 
     if op == "continue":
+        run_request_id, should_execute = await _claim_run_request(ws, rid)
+        if not should_execute:
+            return
         sid = msg.get("sessionId")
         prompt = _with_attachments(msg)
         if not sid or not prompt:
-            await _send(ws, {"op": "error", "requestId": rid, "message": "sessionId/prompt required"})
+            message = "sessionId/prompt required"
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=message)
+            await _send(ws, {"op": "error", "requestId": rid, "message": message})
             return
         existing = runner.get_run(sid)
         if existing and existing.running:
-            await _send(ws, {"op": "error", "requestId": rid, "message": "이미 실행 중입니다"})
+            message = "This conversation is already running"
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=message)
+            await _send(ws, {"op": "error", "requestId": rid,
+                             "message": message})
             return
         # 데몬이 퍼지한 세션이면(재시작으로 잊음) 레지스트리 행을 재삽입해 되살린다.
-        await asyncio.to_thread(daemondb.ensure_alive, sid)
-        _msgs, offset = sessions.read_messages(sid)
-        await hub.subscribe(ws, sid, len(_msgs), offset)
         try:
+            await asyncio.to_thread(daemondb.ensure_alive, sid)
+            _msgs, offset = sessions.read_messages(sid)
+            await hub.subscribe(ws, sid, len(_msgs), offset)
             run = await runner.continue_run(sid, prompt)
         except Exception as exc:
+            if run_request_id:
+                _finish_run_request(run_request_id, "error", message=str(exc))
             await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
             return
+        if run_request_id:
+            _finish_run_request(run_request_id, "started", session_id=sid)
         asyncio.create_task(hub.watch_run(run))
         await _send(ws, {"op": "run.started", "requestId": rid, "sessionId": sid})
         return

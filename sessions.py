@@ -544,7 +544,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
         usage = run.get("tokenUsage") or {}
         items.append({
             "id": sid,
-            "title": (s.get("title") or title or "New Session")[:120],
+            "title": (s.get("title") or title or "Untitled conversation")[:120],
             "status": s.get("status") or "idle",
             "unread": bool(s.get("unread")),
             "updatedAt": s.get("updatedAt") or _iso(mtime),

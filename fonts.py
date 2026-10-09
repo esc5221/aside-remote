@@ -33,62 +33,18 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 # 화이트리스트 — 임의 URL 프록시가 되지 않게 정확히 아는 것만 허용한다.
+WANTED_SANS_ROOT = ("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/"
+                    "packages/wanted-sans/fonts/webfonts/variable/split/")
 FAMILIES: dict[str, dict] = {
     "wanted-sans": {
         "label": "Wanted Sans",
         "kind": "sans",
-        "css": ("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/"
-                "fonts/webfonts/variable/split/WantedSansVariable.min.css"),
+        "css": WANTED_SANS_ROOT + "WantedSansVariable.min.css",
         "stack": '"Wanted Sans Variable", "Wanted Sans", -apple-system, BlinkMacSystemFont, sans-serif',
-    },
-    "noto-serif-kr": {
-        "label": "Noto Serif KR",
-        "kind": "serif",
-        "css": "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap",
-        "stack": '"Noto Serif KR", ui-serif, Georgia, serif',
-    },
-    "gowun-batang": {
-        "label": "Gowun Batang",
-        "kind": "serif",
-        "css": "https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap",
-        "stack": '"Gowun Batang", ui-serif, Georgia, serif',
-    },
-    "nanum-myeongjo": {
-        "label": "나눔명조",
-        "kind": "serif",
-        "css": "https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap",
-        "stack": '"Nanum Myeongjo", ui-serif, Georgia, serif',
-    },
-    "pretendard": {
-        "label": "Pretendard",
-        "kind": "sans",
-        "css": ("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/"
-                "variable/pretendardvariable-dynamic-subset.css"),
-        "stack": '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, sans-serif',
-    },
-    "noto-sans-kr": {
-        "label": "Noto Sans KR",
-        "kind": "sans",
-        "css": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap",
-        "stack": '"Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif',
-    },
-    # 웹폰트 없이 시스템 폰트만 — 요청 0회
-    "system-serif": {
-        "label": "시스템 세리프",
-        "kind": "serif",
-        "css": None,
-        "stack": 'ui-serif, Georgia, "Apple SD Gothic Neo", "Noto Serif KR", serif',
-    },
-    "system-sans": {
-        "label": "시스템 산세리프",
-        "kind": "sans",
-        "css": None,
-        "stack": ('-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", '
-                  '"Malgun Gothic", "Segoe UI", Roboto, sans-serif'),
     },
 }
 
-_ALLOWED_HOSTS = ("fonts.gstatic.com", "cdn.jsdelivr.net")
+_ALLOWED_HOSTS = ("cdn.jsdelivr.net",)
 _URL_RE = re.compile(r"url\((https://[^)]+)\)")
 
 
@@ -155,7 +111,7 @@ def _register(url: str) -> str:
 
 async def file(client: httpx.AsyncClient, fid: str) -> tuple[bytes, str] | None:
     url = _index.get(fid)
-    if not url:
+    if not url or not url.startswith(WANTED_SANS_ROOT):
         return None
     host = url.split("/")[2]
     if not any(host.endswith(h) for h in _ALLOWED_HOSTS):

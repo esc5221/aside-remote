@@ -34,7 +34,7 @@ import config
 import sessions
 
 log = logging.getLogger("aside-remote.runner")
-SESSION_NOT_FOUND_MESSAGE = "대화를 찾을 수 없습니다"
+SESSION_NOT_FOUND_MESSAGE = "Conversation not found"
 
 session_lock = asyncio.Lock()
 
@@ -227,7 +227,9 @@ async def start_run(prompt: str, *, model: str | None = None, effort: str | None
             log.info("run started session=%s", sid)
             return run
 
-        run.error = "세션 id 를 확인하지 못했습니다 (exec 가 즉시 종료됐거나 Aside 가 응답하지 않음)"
+        if run in _orphans:
+            _orphans.remove(run)
+        run.error = run.output or "Could not start a conversation because Aside did not return a session ID."
         log.error("%s · exit=%s output=%s", run.error, run.exit_code, run.output[:300])
         return run
 
@@ -255,7 +257,7 @@ async def continue_run(session_id: str, prompt: str, *, model: str | None = None
             raise FileNotFoundError(SESSION_NOT_FOUND_MESSAGE)
         existing = _runs.get(session_id)
         if existing and existing.running:
-            raise FileExistsError("이미 실행 중입니다")
+            raise FileExistsError("This conversation is already running")
         proc, master = await _spawn(args)
         run = Run(session_id=session_id, prompt=prompt, proc=proc, master_fd=master)
         _runs[session_id] = run
