@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import { Check, RefreshCw } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { UseChat } from './types';
 import { ICON_STROKE, CloseButton, styles as ui } from './ui';
 import { tokens } from './tokens.stylex';
 import { formatRequestError } from './errors';
 import { TEXT_SIZES } from './theme';
+import { useAutoRefresh } from './useAutoRefresh';
 
 type Health = { asideApp: boolean; daemon?: { ready?: boolean; error?: string } };
 
@@ -14,29 +15,25 @@ export function Settings({ chat, onClose, notify, isDarkMode, onThemeToggle, tex
   const shouldReduceMotion = useReducedMotion();
   const [token, setToken] = useState(''); const [isSaving, setSaving] = useState(false); const [health, setHealth] = useState<Health>(); const [error, setError] = useState('');
   const [browserStatus, setBrowserStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
-  const refreshGenerationRef = useRef(0);
-  const isMountedRef = useRef(true);
-  async function refresh() {
-    if (!isMountedRef.current) return;
-    const generation = ++refreshGenerationRef.current;
-    setBrowserStatus('checking'); setError('');
+  const refresh = useCallback(async (signal: AbortSignal) => {
     const [healthResult, browserResult] = await Promise.allSettled([
-      chat.request('/api/health').then(response => response.json() as Promise<Health>),
-      chat.request('/api/tabs?refresh=true'),
+      chat.request('/api/health', { cache: 'no-store', signal }).then(response => response.json() as Promise<Health>),
+      chat.request('/api/tabs?refresh=true', { cache: 'no-store', signal }),
     ]);
-    if (!isMountedRef.current || generation !== refreshGenerationRef.current) return;
+    if (signal.aborted) return;
+    setError('');
     if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
     else { setHealth(undefined); setError('Could not check the connection.'); }
     setBrowserStatus(browserResult.status === 'fulfilled' ? 'connected' : 'unavailable');
     if (browserResult.status === 'rejected') setError(formatRequestError({ message: browserResult.reason instanceof Error ? browserResult.reason.message : undefined }));
-  }
-  useEffect(() => { isMountedRef.current = true; void refresh(); return () => { isMountedRef.current = false; refreshGenerationRef.current += 1; }; }, []);
+  }, [chat.request]);
+  useAutoRefresh(refresh, 5_000);
   return <div {...stylex.props(styles.content)}><div {...stylex.props(styles.header)}><h2 {...stylex.props(ui.title)}>Settings</h2><CloseButton onClick={onClose} /></div>
     <section><h3 {...stylex.props(styles.heading)}>Connection</h3><div {...stylex.props(styles.statusRow)}><span>Bridge</span><span {...stylex.props(ui.muted)}>{chat.isConnected ? 'Connected' : 'Reconnecting…'}</span></div>
       <div {...stylex.props(styles.statusRow)}><span>Aside</span><span {...stylex.props(ui.muted)}>{health ? health.asideApp ? 'Running' : 'Not running' : error ? 'Unavailable' : 'Checking…'}</span></div>
       <div {...stylex.props(styles.statusRow)}><span>Browser</span><span {...stylex.props(ui.muted)}>{browserStatus === 'connected' ? 'Connected' : browserStatus === 'unavailable' ? 'Unavailable' : 'Checking…'}</span></div>
       {error && <p role="alert" {...stylex.props(ui.muted)}>{error}</p>}
-      <div {...stylex.props(styles.actions)}><button {...stylex.props(ui.button)} onClick={() => void refresh()}><RefreshCw size={16} />Refresh</button>{health && !health.asideApp && <button {...stylex.props(ui.button)} onClick={async () => { try { await chat.request('/api/aside/launch', { method: 'POST' }); await refresh(); notify('Aside opened.', 'success'); } catch { notify('Could not open Aside.', 'error'); } }}>Open Aside</button>}</div>
+      {health && !health.asideApp && <div {...stylex.props(styles.actions)}><button {...stylex.props(ui.button)} onClick={async () => { try { await chat.request('/api/aside/launch', { method: 'POST' }); notify('Aside opened.', 'success'); } catch { notify('Could not open Aside.', 'error'); } }}>Open Aside</button></div>}
     </section>
     <section><h3 {...stylex.props(styles.heading)}>Access token</h3><p id="access-token-help" {...stylex.props(ui.muted)}>Only needed when your connection does not sign you in automatically.</p>
       <form onSubmit={async event => { event.preventDefault(); setSaving(true); try { if (await chat.saveToken(token)) setToken(''); } finally { setSaving(false); } }}><input {...stylex.props(ui.field)} type="password" value={token} autoComplete="off" aria-label="Access token" aria-describedby="access-token-help" placeholder="Paste your access token" onChange={event => setToken(event.target.value)} /><button {...stylex.props(ui.button, ui.primary, styles.save)} disabled={isSaving || !token.trim()}>{isSaving ? 'Connecting…' : 'Connect'}</button></form>

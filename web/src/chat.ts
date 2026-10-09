@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { formatRequestError } from "./errors"
+import { useAutoRefresh } from "./useAutoRefresh"
 
 import type {
   ChatMessage,
@@ -16,7 +17,7 @@ const TOKEN_KEY = "token"
 const PAGE_SIZE = 30
 const MESSAGE_TAIL = 400
 const RUN_POLL_INTERVAL_MS = 6_000
-const SESSION_REFRESH_INTERVAL_MS = 30_000
+const SESSION_REFRESH_INTERVAL_MS = 5_000
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
 const MAX_STALE_STREAM_KEYS = 128
@@ -364,7 +365,7 @@ export const useChat = (): UseChat => {
   )
 
   const loadSessionPage = useCallback(
-    async (mode: "reset" | "refresh" | "more") => {
+    async (mode: "reset" | "refresh" | "more", signal?: AbortSignal) => {
       if (mode === "more" && !cursorRef.current) return
       const generation = ++listGenerationRef.current
       const cursorBefore = cursorRef.current
@@ -374,8 +375,8 @@ export const useChat = (): UseChat => {
       if (mode === "more" && cursorRef.current) params.set("cursor", cursorRef.current)
       if (searchQueryRef.current.trim()) params.set("q", searchQueryRef.current.trim())
       try {
-        const result = await api<SessionsResponse>(`/api/sessions?${params}`)
-        if (generation !== listGenerationRef.current || isUnmountedRef.current) return
+        const result = await api<SessionsResponse>(`/api/sessions?${params}`, { cache: "no-store", signal })
+        if (signal?.aborted || generation !== listGenerationRef.current || isUnmountedRef.current) return
         updateSessions((current) => {
           const firstPageTail = result.items.at(-1)
           const previous =
@@ -400,10 +401,10 @@ export const useChat = (): UseChat => {
         setTotal(result.total)
         setMatched(result.matched)
       } catch (error) {
-        if (generation === listGenerationRef.current) {
+        if (!signal?.aborted && generation === listGenerationRef.current && !isUnmountedRef.current) {
           if (error instanceof ApiError && error.status === 401) {
             setAuthError("Authentication failed. Sign in again and reload the page.")
-          } else {
+          } else if (mode !== "refresh") {
             pushToast(`Couldn't load conversations. ${getErrorMessage(error)}`)
           }
         }
@@ -417,8 +418,8 @@ export const useChat = (): UseChat => {
     [api, pushToast, updateSessions],
   )
 
-  const refreshSessions = useCallback(async () => {
-    await loadSessionPage("refresh")
+  const refreshSessions = useCallback(async (signal?: AbortSignal) => {
+    await loadSessionPage("refresh", signal)
   }, [loadSessionPage])
 
   const loadMore = useCallback(async () => {
@@ -1224,10 +1225,7 @@ export const useChat = (): UseChat => {
     return () => window.clearInterval(poll)
   }, [api, fetchMessages, pushToast, runningSessionIds])
 
-  useEffect(() => {
-    const refresh = window.setInterval(() => void refreshSessions(), SESSION_REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(refresh)
-  }, [refreshSessions])
+  useAutoRefresh(refreshSessions, SESSION_REFRESH_INTERVAL_MS, isReady)
 
   return {
     isReady,

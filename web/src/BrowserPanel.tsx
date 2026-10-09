@@ -4,9 +4,6 @@ import {
   ExternalLink,
   Focus,
   Globe2,
-  Pause,
-  Play,
-  RefreshCw,
   Search,
   Send,
   Trash2,
@@ -17,8 +14,11 @@ import { formatRequestError } from "./errors"
 
 import { tokens } from "./tokens.stylex"
 import { focusDialogSurface } from "./ui"
+import { useAutoRefresh } from "./useAutoRefresh"
 
-const REFRESH_INTERVAL_MS = 5_000
+const TAB_REFRESH_INTERVAL_MS = 2_000
+const PREVIEW_REFRESH_INTERVAL_MS = 1_000
+const THUMBNAIL_REFRESH_INTERVAL_MS = 10_000
 const ICON_SIZE = 20
 const ICON_STROKE = 1.8
 
@@ -26,10 +26,10 @@ type BrowserTab = {
   targetId: string
   title: string
   url: string
-  favicon?: string
+  favicon?: string | null
   active: boolean
   loaded: boolean | null
-  lastAccessed?: number
+  lastAccessed?: number | null
 }
 
 type BrowserPanelProps = {
@@ -49,21 +49,21 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
   const [isLoadingTabs, setIsLoadingTabs] = useState(true)
   const [listError, setListError] = useState<string>()
   const [instruction, setInstruction] = useState("")
-  const [isPaused, setIsPaused] = useState(false)
   const [isOpenFormVisible, setIsOpenFormVisible] = useState(false)
   const [newTabUrl, setNewTabUrl] = useState("")
   const [previewUrl, setPreviewUrl] = useState<string>()
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle")
-  const [updatedAt, setUpdatedAt] = useState<Date>()
   const [busyAction, setBusyAction] = useState<string>()
   const [isConfirmingClose, setIsConfirmingClose] = useState(false)
   const listGenerationRef = useRef(0)
   const captureGenerationRef = useRef(0)
-  const captureControllerRef = useRef<AbortController | undefined>(undefined)
   const previewUrlRef = useRef<string | undefined>(undefined)
   const panelRef = useRef<HTMLElement>(null)
   const backButtonRef = useRef<HTMLButtonElement>(null)
   const selectedTargetRef = useRef<string | undefined>(undefined)
+  const selectedTabId = selectedTab?.targetId
+  const isSelectedTabAsleep = selectedTab?.loaded === false
+  const isSelectedTabMissing = !!selectedTabId && !tabs.some((tab) => tab.targetId === selectedTabId)
 
   useLayoutEffect(() => {
     const dialog = panelRef.current?.closest("dialog")
@@ -81,48 +81,48 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
     }
   }, [selectedTab?.targetId])
 
-  const loadTabs = useCallback(async (force = false) => {
+  const loadTabs = useCallback(async (signal?: AbortSignal) => {
     const generation = ++listGenerationRef.current
     setIsLoadingTabs(true)
-    setListError(undefined)
     try {
-      const response = await request(`/api/tabs?refresh=${force}`)
+      const response = await request("/api/tabs?refresh=true", { cache: "no-store", signal })
       const value: unknown = await response.json()
-      if (generation !== listGenerationRef.current || !isTabResponse(value)) return
+      if (signal?.aborted || generation !== listGenerationRef.current) return
+      if (!isTabResponse(value)) throw new Error("Invalid tab list.")
       const sortedTabs = [...value.tabs].sort(
         (first, second) => (second.lastAccessed ?? 0) - (first.lastAccessed ?? 0),
       )
       setTabs(sortedTabs)
+      setSelectedTab((current) => current ? sortedTabs.find((tab) => tab.targetId === current.targetId) ?? current : undefined)
+      setListError(undefined)
     } catch (error) {
-      if (generation === listGenerationRef.current) setListError(getErrorMessage(error))
+      if (!signal?.aborted && generation === listGenerationRef.current) setListError(getErrorMessage(error))
     } finally {
       if (generation === listGenerationRef.current) setIsLoadingTabs(false)
     }
   }, [request])
 
+  useAutoRefresh(loadTabs, TAB_REFRESH_INTERVAL_MS)
+
   useEffect(() => {
-    void loadTabs(true)
     return () => {
       listGenerationRef.current += 1
     }
-  }, [loadTabs])
+  }, [])
 
-  const capturePreview = useCallback(async () => {
-    if (!selectedTab || selectedTab.loaded === false) return
-    captureControllerRef.current?.abort()
-    const controller = new AbortController()
-    captureControllerRef.current = controller
+  const capturePreview = useCallback(async (signal: AbortSignal) => {
+    if (!selectedTabId || isSelectedTabAsleep || isSelectedTabMissing) return
     const generation = ++captureGenerationRef.current
     setPreviewStatus("loading")
     try {
       const response = await request(
-        `/api/tabs/${encodeURIComponent(selectedTab.targetId)}/shot?fresh=true&t=${Date.now()}`,
-        { cache: "no-store", signal: controller.signal },
+        `/api/tabs/${encodeURIComponent(selectedTabId)}/shot?fresh=true`,
+        { cache: "no-store", signal },
       )
       const blob = await response.blob()
       if (!blob.type.startsWith("image/")) throw new Error("The preview was not an image.")
       const nextUrl = URL.createObjectURL(blob)
-      if (controller.signal.aborted || generation !== captureGenerationRef.current) {
+      if (signal.aborted || generation !== captureGenerationRef.current) {
         URL.revokeObjectURL(nextUrl)
         return
       }
@@ -130,38 +130,28 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
       previewUrlRef.current = nextUrl
       setPreviewUrl(nextUrl)
       setPreviewStatus("ready")
-      setUpdatedAt(new Date())
       if (previousUrl) URL.revokeObjectURL(previousUrl)
     } catch (error) {
-      if (controller.signal.aborted || generation !== captureGenerationRef.current) return
+      if (signal.aborted || generation !== captureGenerationRef.current) return
       const status = getErrorStatus(error)
       setPreviewStatus(status === 409 ? "asleep" : status === 404 ? "missing" : "error")
     }
-  }, [request, selectedTab])
+  }, [request, selectedTabId, isSelectedTabAsleep, isSelectedTabMissing])
 
   useEffect(() => {
-    captureControllerRef.current?.abort()
     captureGenerationRef.current += 1
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     previewUrlRef.current = undefined
     setPreviewUrl(undefined)
-    setUpdatedAt(undefined)
-    setIsPaused(false)
     setIsConfirmingClose(false)
-    setPreviewStatus(selectedTab?.loaded === false ? "asleep" : "idle")
-    if (selectedTab?.loaded !== false) void capturePreview()
-    return () => captureControllerRef.current?.abort()
-  }, [capturePreview, selectedTab])
+    setPreviewStatus("idle")
+    return () => { captureGenerationRef.current += 1 }
+  }, [selectedTabId])
 
-  useEffect(() => {
-    if (!selectedTab || selectedTab.loaded === false || isPaused || previewStatus === "asleep" || previewStatus === "missing") return
-    const timer = window.setInterval(() => void capturePreview(), REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [capturePreview, isPaused, previewStatus, selectedTab])
+  useAutoRefresh(capturePreview, PREVIEW_REFRESH_INTERVAL_MS, !!selectedTabId && !isSelectedTabAsleep && !isSelectedTabMissing)
 
   useEffect(() => {
     return () => {
-      captureControllerRef.current?.abort()
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
   }, [])
@@ -176,12 +166,12 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
       } else if (action === "open") {
         await request("/api/tabs", { method: "POST", body: JSON.stringify({ url: selectedTab.url }) })
         notify("Opened a new copy of the tab.", "success")
-        await loadTabs(true)
+        await loadTabs()
       } else {
         await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}`, { method: "DELETE" })
         notify("Tab closed.", "success")
         setSelectedTab(undefined)
-        await loadTabs(true)
+        await loadTabs()
       }
     } catch (error) {
       const status = getErrorStatus(error)
@@ -206,7 +196,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
       setNewTabUrl("")
       setIsOpenFormVisible(false)
       notify("Tab opened.", "success")
-      await loadTabs(true)
+      await loadTabs()
     } catch (error) {
       notify(getErrorMessage(error), "error")
     } finally {
@@ -226,15 +216,15 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
   return (
     <section ref={panelRef} {...stylex.props(styles.panel)} aria-label="Browser tabs">
       <header {...stylex.props(styles.header)}>
-        <button
+        {selectedTab ? <button
           ref={backButtonRef}
           {...stylex.props(styles.iconButton)}
           type="button"
-          aria-label={selectedTab ? "Back to tabs" : "Refresh tabs"}
-          onClick={() => selectedTab ? setSelectedTab(undefined) : void loadTabs(true)}
+          aria-label="Back to tabs"
+          onClick={() => setSelectedTab(undefined)}
         >
-          {selectedTab ? <ArrowLeft size={ICON_SIZE} strokeWidth={ICON_STROKE} /> : <RefreshCw size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
-        </button>
+          <ArrowLeft size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        </button> : <span aria-hidden="true" />}
         <h2 {...stylex.props(styles.heading)}>Browser</h2>
         <button {...stylex.props(styles.iconButton)} type="button" aria-label="Close browser" onClick={onClose}>
           <X size={ICON_SIZE} strokeWidth={ICON_STROKE} />
@@ -249,25 +239,14 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
           </div>
 
           <div {...stylex.props(styles.previewFrame)}>
-            {previewUrl && <img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} />}
-            {!previewUrl && <PreviewMessage status={previewStatus} />}
+            {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} />}
+            {(!previewUrl || isSelectedTabAsleep || isSelectedTabMissing) && <PreviewMessage status={isSelectedTabMissing ? "missing" : isSelectedTabAsleep ? "asleep" : previewStatus} />}
           </div>
 
           <div {...stylex.props(styles.previewBar)}>
             <span {...stylex.props(styles.status)}>
-              {previewStatus === "loading" ? "Updating preview…" : isPaused ? "Auto-refresh paused" : updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Refreshes every 5 seconds"}
+              {isSelectedTabMissing ? "Tab closed" : isSelectedTabAsleep || previewStatus === "asleep" ? "Tab asleep" : previewStatus === "error" ? "Reconnecting…" : previewUrl ? "Live" : "Connecting…"}
             </span>
-            <span className="sr-only" role="status">{isPaused ? "Auto-refresh paused" : "Auto-refresh running"}</span>
-            {selectedTab.loaded !== false && previewStatus !== "missing" && (
-              <div {...stylex.props(styles.inlineActions)}>
-                <button {...stylex.props(styles.iconButton)} type="button" aria-label="Refresh preview" disabled={previewStatus === "loading"} onClick={() => void capturePreview()}>
-                  <RefreshCw size={18} strokeWidth={ICON_STROKE} />
-                </button>
-                <button {...stylex.props(styles.iconButton)} type="button" aria-label={isPaused ? "Resume auto-refresh" : "Pause auto-refresh"} aria-pressed={isPaused} onClick={() => setIsPaused((value) => !value)}>
-                  {isPaused ? <Play size={18} strokeWidth={ICON_STROKE} /> : <Pause size={18} strokeWidth={ICON_STROKE} />}
-                </button>
-              </div>
-            )}
           </div>
 
           <textarea
@@ -281,7 +260,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
           <button
             {...stylex.props(styles.primaryButton)}
             type="button"
-            disabled={!instruction.trim() || previewStatus === "asleep" || previewStatus === "missing"}
+            disabled={!instruction.trim() || isSelectedTabAsleep || isSelectedTabMissing || previewStatus === "asleep" || previewStatus === "missing"}
             onClick={() => {
               const task = instruction.trim()
               if (!task) return
@@ -323,9 +302,9 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
           </div>
           <div {...stylex.props(styles.meta)}>{tabs.length} tabs · {liveCount} available</div>
           <div {...stylex.props(styles.list)}>
-            {listError && <EmptyState title="Tabs unavailable" detail={listError} action="Try again" onAction={() => void loadTabs(true)} />}
+            {listError && <EmptyState title="Reconnecting…" detail={listError} />}
             {!listError && isLoadingTabs && tabs.length === 0 && <EmptyState title="Loading tabs…" detail="Chrome may take a moment to respond." />}
-            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={tabs.length ? "No matching tabs" : "No browser tabs"} detail={tabs.length ? "Try a different search or show all tabs." : "Open a tab here or refresh the list."} action="Refresh" onAction={() => void loadTabs(true)} />}
+            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={tabs.length ? "No matching tabs" : "No browser tabs"} detail={tabs.length ? "Try a different search or show all tabs." : "Open a tab here or in Aside."} />}
             {filteredTabs.map((tab) => (
               <button key={tab.targetId} data-browser-tab={tab.targetId} title={tab.title || "Untitled tab"} {...stylex.props(styles.tabRow)} type="button" onClick={() => setSelectedTab(tab)}>
                 <TabThumbnail tab={tab} request={request} />
@@ -366,26 +345,43 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
 
 function TabThumbnail({ tab, request }: { tab: BrowserTab; request: BrowserPanelProps["request"] }) {
   const [src, setSrc] = useState<string>()
+  const [isVisible, setIsVisible] = useState(false)
+  const thumbnailRef = useRef<HTMLSpanElement>(null)
+  const objectUrlRef = useRef<string | undefined>(undefined)
+  const isAsleep = tab.loaded === false
+
   useEffect(() => {
-    if (tab.loaded === false) return
-    const controller = new AbortController()
-    let objectUrl: string | undefined
-    void request(`/api/tabs/${encodeURIComponent(tab.targetId)}/shot`, { signal: controller.signal })
-      .then((response) => response.blob())
-      .then((blob) => {
-        if (controller.signal.aborted || !blob.type.startsWith("image/")) return
-        objectUrl = URL.createObjectURL(blob)
-        setSrc(objectUrl)
-      })
-      .catch(() => undefined)
-    return () => {
-      controller.abort()
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    const element = thumbnailRef.current
+    if (!element) return
+    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  const capture = useCallback(async (signal: AbortSignal) => {
+    try {
+      const response = await request(`/api/tabs/${encodeURIComponent(tab.targetId)}/shot?fresh=true`, { cache: "no-store", signal })
+      const blob = await response.blob()
+      if (signal.aborted || !blob.type.startsWith("image/")) return
+      const previousUrl = objectUrlRef.current
+      objectUrlRef.current = URL.createObjectURL(blob)
+      setSrc(objectUrlRef.current)
+      if (previousUrl) URL.revokeObjectURL(previousUrl)
+    } catch {
+      // Keep the last thumbnail while the next automatic capture retries.
     }
-  }, [request, tab.loaded, tab.targetId])
+  }, [request, tab.targetId])
+
+  useAutoRefresh(capture, THUMBNAIL_REFRESH_INTERVAL_MS, isVisible && !isAsleep)
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    }
+  }, [])
   return (
-    <span {...stylex.props(styles.thumbnail)}>
-      {src ? <img {...stylex.props(styles.thumbnailImage)} src={src} alt="" /> : tab.favicon ? <img {...stylex.props(styles.favicon)} src={tab.favicon} alt="" /> : <Globe2 size={20} strokeWidth={ICON_STROKE} />}
+    <span ref={thumbnailRef} {...stylex.props(styles.thumbnail)}>
+      {src && !isAsleep ? <img {...stylex.props(styles.thumbnailImage)} src={src} alt="" /> : tab.favicon ? <img {...stylex.props(styles.favicon)} src={tab.favicon} alt="" /> : <Globe2 size={20} strokeWidth={ICON_STROKE} />}
     </span>
   )
 }
@@ -394,21 +390,33 @@ function PreviewMessage({ status }: { status: PreviewStatus }) {
   const copy = status === "asleep"
     ? ["This tab is asleep", "Open a copy to load it again."]
     : status === "missing"
-      ? ["This tab is no longer available", "Return to the list and refresh your tabs."]
+      ? ["This tab is no longer available", "The tab list updates automatically."]
       : status === "error"
-        ? ["Preview unavailable", "Refresh to try again."]
+        ? ["Reconnecting…", "The preview will return automatically."]
         : ["Loading preview…", ""]
   return <div {...stylex.props(styles.previewMessage)}><strong>{copy[0]}</strong>{copy[1] && <span>{copy[1]}</span>}</div>
 }
 
-function EmptyState({ title, detail, action, onAction }: { title: string; detail: string; action?: string; onAction?: () => void }) {
-  return <div {...stylex.props(styles.empty)}><strong>{title}</strong><span>{detail}</span>{action && <button {...stylex.props(styles.textButton)} type="button" onClick={onAction}>{action}</button>}</div>
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return <div {...stylex.props(styles.empty)}><strong>{title}</strong><span>{detail}</span></div>
 }
 
 function isTabResponse(value: unknown): value is { tabs: BrowserTab[] } {
   if (typeof value !== "object" || value === null) return false
   const tabs = Reflect.get(value, "tabs")
-  return Array.isArray(tabs) && tabs.every((tab) => typeof tab === "object" && tab !== null && typeof Reflect.get(tab, "targetId") === "string" && typeof Reflect.get(tab, "url") === "string")
+  return Array.isArray(tabs) && tabs.every((tab) => {
+    if (typeof tab !== "object" || tab === null) return false
+    const loaded = Reflect.get(tab, "loaded")
+    const favicon = Reflect.get(tab, "favicon")
+    const lastAccessed = Reflect.get(tab, "lastAccessed")
+    return typeof Reflect.get(tab, "targetId") === "string"
+      && typeof Reflect.get(tab, "url") === "string"
+      && typeof Reflect.get(tab, "title") === "string"
+      && typeof Reflect.get(tab, "active") === "boolean"
+      && (loaded === null || typeof loaded === "boolean")
+      && (favicon == null || typeof favicon === "string")
+      && (lastAccessed == null || typeof lastAccessed === "number" && Number.isFinite(lastAccessed))
+  })
 }
 
 function getErrorStatus(error: unknown) {
@@ -465,7 +473,6 @@ const styles = stylex.create({
   previewMessage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: 24, textAlign: "center", color: tokens.muted, fontSize: '0.8125rem' },
   previewBar: { minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
   status: { minWidth: 0, color: tokens.muted, fontSize: '0.75rem', overflowWrap: "anywhere" },
-  inlineActions: { display: "flex", flexShrink: 0 },
   textarea: { width: "100%", minHeight: 88, resize: "vertical", padding: "13px 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 14, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem', lineHeight: 1.45 },
   primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
   actionGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },

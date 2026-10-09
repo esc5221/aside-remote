@@ -18,7 +18,8 @@ What you get:
   markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
   Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
-  work on any tab, and open a live preview sheet with pause and manual refresh.
+  work on any tab, and open a preview sheet that updates automatically and recovers
+  after connection failures. Tab lists and visible thumbnails also update automatically.
 - **Conversation deletion** — confirm before deleting a conversation and its local
   session files. Running conversations must be stopped in Aside before deletion.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.

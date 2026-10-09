@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import { Plus, Search, Settings2, Trash2, RefreshCw, X, ChevronRight } from 'lucide-react';
+import { Plus, Search, Settings2, Trash2, X, ChevronRight } from 'lucide-react';
 import type { UseChat, ChatSession } from './types';
 import { tokens } from './tokens.stylex';
 import { ICON_STROKE, BrowserIcon, IconButton, styles as ui } from './ui';
@@ -9,7 +9,7 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onOpen, onSettings, on
 }) {
   let lastGroup = '';
   return <aside {...stylex.props(styles.sidebar)} aria-label="Conversations">
-    <div {...stylex.props(styles.top)}><span {...stylex.props(styles.brand)}>Aside</span><IconButton label={isDrawer ? 'Close conversations' : 'Refresh conversations'} onClick={isDrawer ? onClose : () => void chat.refreshSessions()}>{isDrawer ? <X size={22} strokeWidth={ICON_STROKE} /> : <RefreshCw size={18} strokeWidth={ICON_STROKE} />}</IconButton></div>
+    <div {...stylex.props(styles.top)}><span {...stylex.props(styles.brand)}>Aside</span>{isDrawer && <IconButton label="Close conversations" onClick={onClose}><X size={22} strokeWidth={ICON_STROKE} /></IconButton>}</div>
     <button {...stylex.props(styles.newChat)} onClick={onNew}><Plus size={20} strokeWidth={ICON_STROKE} />New chat</button>
     <div {...stylex.props(styles.search)}><Search size={17} strokeWidth={ICON_STROKE} /><input aria-label="Search conversations" placeholder="Search" value={chat.searchQuery} onChange={event => chat.setSearchQuery(event.target.value)} {...stylex.props(styles.searchInput)} />{chat.searchQuery && <button {...stylex.props(styles.clear)} aria-label="Clear search" onClick={() => chat.setSearchQuery('')}><X size={16} /></button>}</div>
     <div {...stylex.props(styles.list)}>

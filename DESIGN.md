@@ -8,6 +8,7 @@ Aside uses a restrained, monochrome conversation interface inspired by ChatGPT o
 - Mobile: a full-height conversation with a 64px header, independently scrolling messages, and an anchored composer. The conversation drawer opens modally below 821px.
 - Desktop: a 288px conversation sidebar and the same conversation surface. Text is bounded to 736px and the composer to 768px.
 - Browser and settings open in accessible dialogs, presented as bottom sheets on phones. Browser captures preserve their source colors and aspect ratio. Conversation deletion requires explicit confirmation and remains blocked during a run.
+- Browser tab lists update automatically after a two-second delay between completed requests. Selected previews use a one-second delay, visible thumbnails ten seconds, and connection settings five seconds. Requests never overlap within a refresh loop, time out after sixty seconds, and retry automatically. Returning to the app or reconnecting the network triggers an immediate update. No refresh or pause controls are shown; hidden screens stop polling. Closed and sleeping tabs follow the latest tab list rather than stale selection data.
 - The visible viewport controls shell height so the composer stays above a mobile keyboard. Safe-area insets cover the header, composer, and drawers.
 - Home-screen apps render the canvas beneath the iOS status bar. Theme changes update the page background, color scheme, and browser theme color together so the status bar follows the selected appearance.
 
@@ -49,6 +50,8 @@ Settings → Appearance exposes a Dark mode switch and text sizes from 100% to 2
 Explicitly opening a conversation persists its ID. Initial load restores the saved conversation, including when a browser/settings panel is open; without a saved selection it opens the latest conversation. Explicit New chat persists the empty conversation choice until a message creates a session or the user selects an existing conversation.
 
 The drawer orders conversations by the last user or assistant message timestamp, newest first, with the session ID as a stable tie-breaker. Opening a conversation, changing daemon metadata, or touching its log file does not promote it. Incoming messages update the order immediately; older list responses cannot undo newer message activity. Date groups and pagination use this same activity time, including equal-time page boundaries. Sessions without timestamped messages use the log's modification time; newly created sessions without a log use their reported update time.
+
+Conversation lists also synchronize automatically every five seconds while the app is visible, and immediately when it becomes visible again or the network reconnects. Automatic retry failures do not generate repeated toasts. The sidebar has no refresh control.
 
 Each send has a request ID. Late responses cannot reselect a conversation after navigation. The bridge keeps a bounded request-status registry so reconnecting clients can recover a delivery without sending the prompt twice. Reconnection reloads canonical messages before subscribing to the stream. Polling also recovers completion when a stream event is missed.
 
