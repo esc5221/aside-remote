@@ -84,6 +84,7 @@ check('search filters from the API', drawer.textContent.includes('Alpha conversa
 click([...drawer.querySelectorAll('button')].find(button => button.textContent.includes('Alpha conversation')));
 await waitFor(() => location.pathname === '/c/AAA');
 check('opening a result routes to its conversation', location.pathname === '/c/AAA');
+await waitFor(() => !document.querySelector('dialog[aria-label="Conversation menu"]'));
 check('drawer closes after selection', !document.querySelector('dialog[aria-label="Conversation menu"]'));
 
 console.log('dead link and stale run correlation');
@@ -99,7 +100,7 @@ await waitFor(() => lastSocketRequest('run'));
 const staleRun = lastSocketRequest('run');
 check('draft remains until the server accepts the run', draft.value === 'Do not resurrect this run');
 click(document.querySelector('button[aria-label="New chat"]'));
-socket.emit({ op: 'run.started', requestId: staleRun.requestId, sessionId: 'STALESESSION01' });
+socket.emit({ op: 'run.started', requestId: staleRun.requestId, sessionId: 'STALESESSION01', runId: 'stale-run' });
 await tick(30);
 check('late run.started cannot reselect a canceled chat', location.pathname === '/' && !localStorage.getItem('lastSession'));
 
@@ -110,7 +111,7 @@ await waitFor(() => socketRequests.filter(request => request.op === 'run').lengt
 const recoveredRun = lastSocketRequest('run');
 messages.set('NEWSESSION01', [createMessage(0, 'user', [{ type: 'text', text: 'Accepted after disconnect' }])]);
 running.add('NEWSESSION01');
-runRequests.set(recoveredRun.requestId, { status: 'started', sessionId: 'NEWSESSION01' });
+runRequests.set(recoveredRun.requestId, { status: 'started', sessionId: 'NEWSESSION01', runId: 'recovered-run' });
 socket.disconnect();
 await waitFor(() => location.pathname === '/c/NEWSESSION01');
 check('request registry recovers a lost run.started event', location.pathname === '/c/NEWSESSION01');
@@ -118,7 +119,7 @@ check('canonical fetch recovers the first message', document.querySelector('[ari
 check('draft clears only after recovered acceptance', draft.value === '');
 
 click(document.querySelector('button[aria-label="New chat"]'));
-socket.emit({ op: 'run.done', sessionId: 'NEWSESSION01' });
+socket.emit({ op: 'run.done', sessionId: 'NEWSESSION01', runId: 'recovered-run' });
 await tick(30);
 check('old run completion does not reopen its conversation', location.pathname === '/');
 check('explicit new chat choice is persisted', localStorage.getItem('lastSessionMode') === 'new');
@@ -133,7 +134,7 @@ function createSession(id, title, mtime) {
 }
 
 function createMessage(seq, role, blocks) {
-  return { seq, role, blocks, ts: '2026-10-10T00:00:00Z' };
+  return { seq, role, blocks, ts: 1_791_590_400_000 };
 }
 
 function check(name, condition) {
@@ -177,6 +178,10 @@ function installFetch(targetWindow) {
   globalThis.fetch = targetWindow.fetch = async (input, init = {}) => {
     const url = new URL(String(input), location.href);
     const method = init.method || 'GET';
+    if (method === 'GET' && url.pathname.startsWith('/assets/')) {
+      const assetPath = path.join(dist, 'assets', path.basename(url.pathname));
+      if (fs.existsSync(assetPath)) return new Response(fs.readFileSync(assetPath));
+    }
     if (url.pathname === '/api/web-token') return response({ token: 'test-token', via: 'loopback' });
     if (url.pathname === '/api/sessions' && method === 'GET') {
       const query = (url.searchParams.get('q') || '').toLowerCase();

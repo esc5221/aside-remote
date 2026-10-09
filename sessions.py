@@ -12,11 +12,13 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
 from pathlib import Path
 from typing import AsyncIterator, Iterable
+from urllib.parse import urlparse
 
 import httpx
 
@@ -158,6 +160,30 @@ def _blocks(raw: Iterable) -> list[dict]:
     return out
 
 
+def _sources(raw: object) -> list[dict]:
+    out: list[dict] = []
+    for source in raw if isinstance(raw, list) else []:
+        if not isinstance(source, dict):
+            continue
+        source_id = source.get("id")
+        url = source.get("url")
+        if not isinstance(source_id, str) or not isinstance(url, str):
+            continue
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            continue
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            continue
+        item = {"id": source_id, "url": url}
+        if isinstance(source.get("title"), str):
+            item["title"] = source["title"]
+        out.append(item)
+        if len(out) == 100:
+            break
+    return out
+
+
 def normalize(line_obj: dict, seq: int) -> dict | None:
     role = line_obj.get("role")
     if role not in ("user", "assistant", "toolResult", "system-message"):
@@ -168,11 +194,15 @@ def normalize(line_obj: dict, seq: int) -> dict | None:
         "ts": line_obj.get("timestamp"),
         "blocks": _blocks(line_obj.get("content")),
     }
-    for key in ("toolName", "toolCallId", "model", "provider", "stopReason"):
+    for key in ("toolName", "toolCallId", "model", "provider", "stopReason", "responseId"):
         if line_obj.get(key) is not None:
             msg[key] = line_obj[key]
     if line_obj.get("isError"):
         msg["isError"] = True
+    details = line_obj.get("details")
+    sources = _sources(details.get("sources") if isinstance(details, dict) else None)
+    if sources:
+        msg["sources"] = sources
     usage = line_obj.get("usage") or {}
     if usage:
         msg["usage"] = {
@@ -352,13 +382,38 @@ async def session_status(client: httpx.AsyncClient, session_id: str) -> str | No
 # messages.jsonl 없는 디렉토리 1262개는 `aside repl` 원샷 잔재라 목록에서 제외한다.
 
 _INDEX_TTL = 4.0
-_index: list[tuple[int, str, int, Path | None]] = []   # (mtime_ns, id, size, dir) · 최신순
+_index: list[tuple[int, str, int, Path | None]] = []   # (activity_ns, id, size, dir) · 최신순
 # mtime 은 정수 나노초로 둔다. float 초를 문자열 커서로 왕복시키면 반올림 때문에
 # 커서가 실제값보다 커져 경계 항목이 다음 페이지에 다시 나온다 (실측: 81건 순회에 중복 1건).
 _index_at = 0.0
 _meta: dict[str, tuple[int, int, str, str]] = {}       # id -> (mtime_ns, size, title, preview)
+_activity: dict[str, tuple[int, int, int]] = {}  # File metadata invalidates cached message timestamps.
+_TAIL_BYTES = 96 * 1024
 
 _ATT_BLOCK = re.compile(r"^\[첨부 이미지\]\n(?:- .*\n)+위 이미지를[^\n]*\n\n?")
+
+
+def _last_message_ns(path: Path, size: int) -> int:
+    with path.open("rb") as fh:
+        position = size
+        partial = b""
+        while position:
+            start = max(0, position - _TAIL_BYTES)
+            fh.seek(start)
+            lines = (fh.read(position - start) + partial).split(b"\n")
+            partial = lines[0] if start else b""
+            for raw in reversed(lines[1:] if start else lines):
+                try:
+                    obj = json.loads(raw)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                if not isinstance(obj, dict) or obj.get("role") not in ("user", "assistant"):
+                    continue
+                timestamp = obj.get("timestamp")
+                if type(timestamp) in (int, float) and math.isfinite(timestamp) and timestamp > 0:
+                    return int(timestamp * 1_000_000)
+            position = start
+    return 0
 
 
 def _scan_index() -> list[tuple[int, str, int, Path | None]]:
@@ -377,10 +432,21 @@ def _scan_index() -> list[tuple[int, str, int, Path | None]]:
             try:
                 if not e.is_dir():
                     continue
-                st = os.stat(os.path.join(e.path, "messages.jsonl"))
+                path = Path(e.path)
+                file = path / "messages.jsonl"
+                st = file.stat()
+                sid = e.name.split("_", 1)[1]
+                cached = _activity.get(sid)
+                if cached and cached[:2] == (st.st_mtime_ns, st.st_size):
+                    activity_ns = cached[2]
+                else:
+                    activity_ns = _last_message_ns(file, st.st_size) or st.st_mtime_ns
+                    _activity[sid] = (st.st_mtime_ns, st.st_size, activity_ns)
             except OSError:
                 continue
-            rows.append((st.st_mtime_ns, e.name.split("_", 1)[1], st.st_size, Path(e.path)))
+            rows.append((activity_ns, sid, st.st_size, path))
+    if len(_activity) > 4000:
+        _activity.clear()
     rows.sort(key=lambda r: (-r[0], r[1]))
     return rows
 
@@ -429,7 +495,7 @@ def _head_user_text(f: str, lines: int = 10) -> str:
     return ""
 
 
-def _tail_asst_text(f: str, size: int, win: int = 96 * 1024) -> str:
+def _tail_asst_text(f: str, size: int, win: int = _TAIL_BYTES) -> str:
     """미리보기용. 마지막 assistant 발화 = 파일 끝 96KB 만 읽는다 (최대 2.7MB 파일 대비)."""
     with open(f, "rb") as fh:
         if size > win:
@@ -453,6 +519,11 @@ def _tail_asst_text(f: str, size: int, win: int = 96 * 1024) -> str:
 
 
 def _hydrate(mtime: int, sid: str, size: int, d: Path | None) -> tuple[str, str]:
+    if d is not None:
+        try:
+            mtime = (d / "messages.jsonl").stat().st_mtime_ns
+        except OSError:
+            return "", ""
     hit = _meta.get(sid)
     if hit and hit[0] == mtime and hit[1] == size:
         return hit[2], hit[3]
@@ -511,7 +582,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
 
     # 방금 시작해 messages.jsonl 이 아직 없는 세션은 디스크에 안 보인다 → recents 로 메운다.
     known = {r[1] for r in rows}
-    ghosts = [(_epoch_ns(s.get("updatedAt")) or time.time_ns(), sid, 0, None)
+    ghosts = [(_epoch_ns(s.get("updatedAt")), sid, 0, None)
               for sid, s in live.items() if sid not in known and not s.get("ephemeral")]
     if ghosts:
         rows = sorted(rows + ghosts, key=lambda r: (-r[0], r[1]))
@@ -547,7 +618,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
             "title": (s.get("title") or title or "Untitled conversation")[:120],
             "status": s.get("status") or "idle",
             "unread": bool(s.get("unread")),
-            "updatedAt": s.get("updatedAt") or _iso(mtime),
+            "updatedAt": _iso(mtime),
             "mtime": mtime / 1e9,
             "preview": (_final_text(run)[:280] if run else "") or preview,
             "lastPrompt": _first_user_text(run)[:280] if run else title,

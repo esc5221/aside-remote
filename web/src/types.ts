@@ -24,11 +24,15 @@ export type ImageBlock = {
 
 export type MessageBlock = TextBlock | ThinkingBlock | ToolCallBlock | ImageBlock
 
+export type CitationSource = { id: string; url: string; title?: string }
+
 export type ChatMessage = {
   seq: number
   role: "user" | "assistant" | "toolResult" | "system"
-  ts?: string
+  ts?: number
+  responseId?: string
   blocks: MessageBlock[]
+  sources?: CitationSource[]
   toolName?: string
   toolCallId?: string
   model?: string
@@ -41,6 +45,17 @@ export type ChatMessage = {
     total?: number
     cost?: number
   }
+}
+
+export type LiveAssistant = {
+  sessionId: string
+  runId: string
+  streamId: string
+  revision: number
+  text: string
+  done: boolean
+  messageTs?: number
+  responseId?: string
 }
 
 export type ChatSession = {
@@ -89,6 +104,7 @@ export type UseChat = {
   searchQuery: string
   sessions: ChatSession[]
   messages: ChatMessage[]
+  liveAssistant?: LiveAssistant
   hasMore: boolean
   total: number
   matched: number

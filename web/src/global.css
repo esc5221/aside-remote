@@ -1,13 +1,13 @@
 @layer reset, stylex;
 @layer reset {
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; touch-action: pan-x pan-y; }
   html, body, #root { margin: 0; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
   html {
     --canvas: #ffffff; --surface: #f7f7f7; --bubble: #f1f1f1; --text: #171717;
-    --muted: #737373; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
+    --muted: #666666; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
     --control-border: #dcdcdc; --primary-hover: #333333; --selection: #d8eaff;
-    --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #986801; --syntax-title: #205cc9;
-    color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%;
+    --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #855b00; --syntax-title: #205cc9;
+    color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%; font-size: var(--text-size, 100%);
   }
   html[data-theme="dark"] {
     --canvas: #212121; --surface: #2f2f2f; --bubble: #303030; --text: #f3f3f3;
@@ -17,38 +17,38 @@
     color-scheme: dark;
   }
   body, button, input, textarea, select, code, pre { font-family: "Wanted Sans Variable", "Wanted Sans", sans-serif; }
-  body { color: var(--text); font-size: 16px; -webkit-tap-highlight-color: transparent; }
-  button, input, textarea { font-size: inherit; }
+  body { background: var(--canvas); color: var(--text); font-size: 1rem; -webkit-tap-highlight-color: transparent; }
+  button, input, textarea, select { font-size: inherit; }
   button { cursor: pointer; }
   button:disabled { cursor: default; opacity: .4; }
   button, input, textarea { -webkit-appearance: none; }
   button { touch-action: manipulation; }
-  button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-  input:focus, textarea:focus { outline: none; }
+  :focus, :focus-visible { outline: none; }
   img { max-width: 100%; }
   a { color: inherit; text-underline-offset: 3px; overflow-wrap: anywhere; }
   dialog { color: inherit; }
   dialog::backdrop { background: rgb(0 0 0 / .28); backdrop-filter: blur(2px); }
   ::selection { background: var(--selection); }
-  .markdown { font-size: 16px; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
+  .markdown { font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
   .markdown > :first-child { margin-top: 0; }
   .markdown > :last-child { margin-bottom: 0; }
   .markdown p { margin: 0 0 16px; white-space: pre-wrap; }
   .markdown h1, .markdown h2, .markdown h3 { line-height: 1.35; margin: 26px 0 12px; font-weight: 650; }
-  .markdown h1 { font-size: 24px; } .markdown h2 { font-size: 21px; } .markdown h3 { font-size: 18px; }
+  .markdown h1 { font-size: 1.5rem; } .markdown h2 { font-size: 1.3125rem; } .markdown h3 { font-size: 1.125rem; }
   .markdown ul, .markdown ol { padding-left: 25px; margin: 12px 0 20px; }
   .markdown li { margin: 5px 0; }
   .markdown blockquote { border-left: 3px solid var(--border); margin: 16px 0; padding-left: 16px; color: var(--muted); }
   .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
   .markdown code { font-size: .9em; background: var(--bubble); padding: 2px 5px; border-radius: 5px; white-space: break-spaces; overflow-wrap: anywhere; }
   .markdown pre { margin: 0; overflow-x: auto; padding: 16px; max-width: 100%; overscroll-behavior-x: contain; }
-  .markdown pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: 13px; line-height: 1.6; }
-  .markdown table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .markdown pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: 0.8125rem; line-height: 1.6; }
+  .markdown table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
   .markdown td, .markdown th { padding: 11px 14px; border-bottom: 1px solid var(--border); text-align: left; min-width: 120px; }
   .markdown th { font-weight: 650; background: var(--surface); }
   .markdown img { border-radius: 16px; max-height: 420px; object-fit: contain; cursor: zoom-in; }
   .hljs-keyword, .hljs-selector-tag { color: var(--syntax-keyword); } .hljs-string, .hljs-attr { color: var(--syntax-string); }
   .hljs-number, .hljs-literal { color: var(--syntax-number); } .hljs-comment { color: var(--muted); }
   .hljs-title, .hljs-function { color: var(--syntax-title); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
 }

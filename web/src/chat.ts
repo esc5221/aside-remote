@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { formatRequestError } from "./errors"
 
 import type {
   ChatMessage,
   ChatSession,
+  LiveAssistant,
   Toast,
   UploadAttachment,
   UseChat,
@@ -17,6 +19,7 @@ const RUN_POLL_INTERVAL_MS = 6_000
 const SESSION_REFRESH_INTERVAL_MS = 30_000
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
+const MAX_STALE_STREAM_KEYS = 128
 const MESSAGE_ROLES: ChatMessage["role"][] = ["user", "assistant", "toolResult", "system"]
 
 type SessionsResponse = {
@@ -44,34 +47,74 @@ type PendingRequest = {
 type RunRequestResponse = {
   status: "pending" | "started" | "error"
   sessionId?: string
+  runId?: string
   message?: string
+}
+
+type ActiveLiveAssistant = LiveAssistant & {
+  canonicalStartSeq: number
 }
 
 type SocketMessage = {
   op: string
   requestId?: string
   sessionId?: string
+  runId?: string
   message?: ChatMessage
   running?: string[]
-  output?: string
   error?: string
+  streamId?: string
+  revision?: number
+  text?: string
+  done?: boolean
+  messageTs?: number
+  responseId?: string
 }
 
 class ApiError extends Error {
   readonly status: number
 
   constructor(status: number, message: string) {
-    super(message)
+    super(formatRequestError({ message, status }))
     this.status = status
   }
 }
 
 const getErrorMessage = (error: unknown) => {
-  return error instanceof Error ? error.message : "Something went wrong."
+  return formatRequestError({ message: error instanceof Error ? error.message : undefined })
 }
 
 const createRequestId = () => {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+}
+
+const getStreamKey = (sessionId: string, streamId: string) => `${sessionId}:${streamId}`
+
+const getRunKey = (sessionId: string, runId: string) => `${sessionId}:${runId}`
+
+const compareSessions = (left: ChatSession, right: ChatSession) => {
+  return right.mtime - left.mtime || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+}
+
+const getAssistantText = (message: ChatMessage) => {
+  return message.blocks
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+}
+
+const isCanonicalMatch = (active: ActiveLiveAssistant, message: ChatMessage) => {
+  if (message.role !== "assistant") return false
+  if (active.responseId && message.responseId === active.responseId) return true
+  if (active.messageTs !== undefined && message.ts === active.messageTs) return true
+  if (
+    active.responseId ||
+    active.messageTs !== undefined ||
+    message.seq < active.canonicalStartSeq
+  ) {
+    return false
+  }
+  return active.text.length > 0 && getAssistantText(message) === active.text
 }
 
 const parseApiError = async (response: Response) => {
@@ -112,16 +155,28 @@ const parseSocketMessage = (raw: string): SocketMessage | undefined => {
       op: value.op,
       requestId: typeof value.requestId === "string" ? value.requestId : undefined,
       sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
+      runId: typeof value.runId === "string" ? value.runId : undefined,
       message: isChatMessage(value.message) ? value.message : undefined,
       running: Array.isArray(value.running)
         ? value.running.filter((item): item is string => typeof item === "string")
         : undefined,
-      output: typeof value.output === "string" ? value.output : undefined,
+      streamId: typeof value.streamId === "string" ? value.streamId : undefined,
+      revision:
+        typeof value.revision === "number" && Number.isInteger(value.revision)
+          ? value.revision
+          : undefined,
+      text: typeof value.text === "string" ? value.text : undefined,
+      done: typeof value.done === "boolean" ? value.done : undefined,
+      messageTs:
+        typeof value.messageTs === "number" && Number.isFinite(value.messageTs)
+          ? value.messageTs
+          : undefined,
+      responseId: typeof value.responseId === "string" ? value.responseId : undefined,
       error:
         typeof value.message === "string"
-          ? value.message
+          ? formatRequestError({ message: value.message })
           : typeof value.error === "string"
-            ? value.error
+            ? formatRequestError({ message: value.error })
             : undefined,
     }
   } catch {
@@ -145,6 +200,7 @@ export const useChat = (): UseChat => {
   const [searchQuery, setSearchQueryState] = useState("")
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [liveAssistant, setLiveAssistant] = useState<LiveAssistant>()
   const [cursor, setCursor] = useState<string>()
   const [total, setTotal] = useState(0)
   const [matched, setMatched] = useState(0)
@@ -169,17 +225,53 @@ export const useChat = (): UseChat => {
   const sessionsRef = useRef<ChatSession[]>([])
   const pendingRequestsRef = useRef(new Map<string, PendingRequest>())
   const recoveringRequestIdsRef = useRef(new Set<string>())
+  const messagesRef = useRef<ChatMessage[]>([])
+  const liveAssistantRef = useRef<ActiveLiveAssistant | undefined>(undefined)
+  const activeRunIdsRef = useRef(new Map<string, string>())
+  const retiredStreamIdsRef = useRef(new Set<string>())
+  const abortedRunIdsRef = useRef(new Set<string>())
   const isUnmountedRef = useRef(false)
+
+  const rememberRetiredStream = useCallback((selectedSessionId: string, streamId: string) => {
+    const retired = retiredStreamIdsRef.current
+    retired.add(getStreamKey(selectedSessionId, streamId))
+    if (retired.size > MAX_STALE_STREAM_KEYS) {
+      const oldest = retired.values().next().value
+      if (typeof oldest === "string") retired.delete(oldest)
+    }
+  }, [])
+
+  const retireLiveAssistant = useCallback(
+    (expectedSessionId?: string, expectedStreamId?: string) => {
+      const active = liveAssistantRef.current
+      if (
+        !active ||
+        (expectedSessionId !== undefined && active.sessionId !== expectedSessionId) ||
+        (expectedStreamId !== undefined && active.streamId !== expectedStreamId)
+      ) {
+        return
+      }
+      rememberRetiredStream(active.sessionId, active.streamId)
+      liveAssistantRef.current = undefined
+      setLiveAssistant(undefined)
+    },
+    [rememberRetiredStream],
+  )
+
+  const reconcileLiveAssistant = useCallback(
+    (canonicalMessages: ChatMessage[]) => {
+      const active = liveAssistantRef.current
+      if (!active || active.sessionId !== sessionIdRef.current) return
+      const reconciled = canonicalMessages.some((message) => isCanonicalMatch(active, message))
+      if (reconciled) retireLiveAssistant(active.sessionId, active.streamId)
+    },
+    [retireLiveAssistant],
+  )
 
   const pushToast = useCallback(
     (message: string, tone: Toast["tone"] = "error") => {
       const toast = { id: createRequestId(), message, tone }
       setToasts((current) => [...current, toast])
-      window.setTimeout(() => {
-        if (!isUnmountedRef.current) {
-          setToasts((current) => current.filter((item) => item.id !== toast.id))
-        }
-      }, 5_000)
     },
     [],
   )
@@ -245,7 +337,9 @@ export const useChat = (): UseChat => {
       ) {
         return false
       }
+      messagesRef.current = result.messages
       setMessages(result.messages)
+      reconcileLiveAssistant(result.messages)
       nextSeqRef.current = result.nextSeq
       offsetRef.current = result.offset
       if (
@@ -266,7 +360,7 @@ export const useChat = (): UseChat => {
       subscribe(selectedSessionId)
       return result.messages.length > 0 || result.running
     },
-    [api, subscribe],
+    [api, reconcileLiveAssistant, subscribe],
   )
 
   const loadSessionPage = useCallback(
@@ -283,16 +377,21 @@ export const useChat = (): UseChat => {
         const result = await api<SessionsResponse>(`/api/sessions?${params}`)
         if (generation !== listGenerationRef.current || isUnmountedRef.current) return
         updateSessions((current) => {
-          const firstPageTail = result.items.at(-1)?.mtime
+          const firstPageTail = result.items.at(-1)
           const previous =
             mode === "more"
               ? current
               : mode === "refresh" && result.nextCursor && firstPageTail != null
-                ? current.filter((item) => item.mtime < firstPageTail)
+                ? current.filter((item) => compareSessions(item, firstPageTail) > 0)
                 : []
           const byId = new Map(previous.map((item) => [item.id, item]))
-          result.items.forEach((item) => byId.set(item.id, item))
-          return [...byId.values()].sort((left, right) => right.mtime - left.mtime)
+          result.items.forEach((item) => {
+            const existing = current.find((session) => session.id === item.id)
+            byId.set(item.id, existing && existing.mtime > item.mtime
+              ? { ...item, mtime: existing.mtime, updatedAt: existing.updatedAt }
+              : item)
+          })
+          return [...byId.values()].sort(compareSessions)
         })
         const nextCursor =
           mode === "refresh" && hadSessions && result.nextCursor ? cursorBefore : result.nextCursor
@@ -341,8 +440,10 @@ export const useChat = (): UseChat => {
         sendSocket({ op: "unsub", sessionId: previousSessionId })
       }
       const generation = ++openGenerationRef.current
+      retireLiveAssistant()
       sessionIdRef.current = selectedSessionId
       setSessionId(selectedSessionId)
+      messagesRef.current = []
       setMessages([])
       setPendingPrompt(undefined)
       pendingPromptRef.current = undefined
@@ -383,7 +484,7 @@ export const useChat = (): UseChat => {
         }
       }
     },
-    [cancelPendingRequests, fetchMessages, pushToast, sendSocket],
+    [cancelPendingRequests, fetchMessages, pushToast, retireLiveAssistant, sendSocket],
   )
 
   const restoreSavedSession = useCallback(async () => {
@@ -409,8 +510,10 @@ export const useChat = (): UseChat => {
     const previousSessionId = sessionIdRef.current
     if (previousSessionId) sendSocket({ op: "unsub", sessionId: previousSessionId })
     openGenerationRef.current += 1
+    retireLiveAssistant()
     sessionIdRef.current = undefined
     setSessionId(undefined)
+    messagesRef.current = []
     setMessages([])
     setPendingPrompt(undefined)
     pendingPromptRef.current = undefined
@@ -422,7 +525,7 @@ export const useChat = (): UseChat => {
     localStorage.removeItem(LAST_SESSION_KEY)
     localStorage.setItem(LAST_SESSION_MODE_KEY, "new")
     if (location.pathname !== "/") history.pushState({}, "", "/")
-  }, [cancelPendingRequests, sendSocket])
+  }, [cancelPendingRequests, retireLiveAssistant, sendSocket])
 
   const settlePendingRequest = useCallback(
     (requestId: string, accepted: boolean, error?: string) => {
@@ -437,7 +540,7 @@ export const useChat = (): UseChat => {
         pendingPromptRef.current = undefined
         setPendingAttachments([])
         pendingAttachmentsRef.current = []
-        pushToast(error || "The message couldn't be sent.")
+        pushToast(error ? formatRequestError({ message: error }) : "The message couldn't be sent.")
       }
       return pending
     },
@@ -445,7 +548,7 @@ export const useChat = (): UseChat => {
   )
 
   const acceptRun = useCallback(
-    (requestId: string, acceptedSessionId: string) => {
+    (requestId: string, acceptedSessionId: string, runId: string) => {
       const pending = pendingRequestsRef.current.get(requestId)
       if (
         !pending ||
@@ -456,6 +559,7 @@ export const useChat = (): UseChat => {
       }
       const accepted = settlePendingRequest(requestId, true)
       if (!accepted) return
+      activeRunIdsRef.current.set(acceptedSessionId, runId)
       setRunningSessionIds((current) =>
         current.includes(acceptedSessionId) ? current : [...current, acceptedSessionId],
       )
@@ -500,8 +604,8 @@ export const useChat = (): UseChat => {
             const result = await api<RunRequestResponse>(
               `/api/run-requests/${encodeURIComponent(requestId)}`,
             )
-            if (result.status === "started" && result.sessionId) {
-              acceptRun(requestId, result.sessionId)
+            if (result.status === "started" && result.sessionId && result.runId) {
+              acceptRun(requestId, result.sessionId, result.runId)
               return
             }
             if (result.status === "error") {
@@ -541,36 +645,131 @@ export const useChat = (): UseChat => {
         setRunningSessionIds((current) => [...new Set([...current, ...(payload.running ?? [])])])
         return
       }
-      if (payload.op === "run.started" && payload.requestId && payload.sessionId) {
-        acceptRun(payload.requestId, payload.sessionId)
+      if (
+        payload.op === "run.started" &&
+        payload.requestId &&
+        payload.sessionId &&
+        payload.runId
+      ) {
+        acceptRun(payload.requestId, payload.sessionId, payload.runId)
         return
       }
       if (payload.op === "error" && payload.requestId) {
         settlePendingRequest(payload.requestId, false, payload.error)
         return
       }
+      if (
+        payload.op === "msg.delta" &&
+        payload.sessionId &&
+        payload.runId &&
+        payload.streamId &&
+        payload.revision !== undefined &&
+        payload.text !== undefined &&
+        payload.done !== undefined
+      ) {
+        if (payload.sessionId !== sessionIdRef.current || payload.revision < 0) return
+        const streamKey = getStreamKey(payload.sessionId, payload.streamId)
+        if (
+          retiredStreamIdsRef.current.has(streamKey) ||
+          abortedRunIdsRef.current.has(getRunKey(payload.sessionId, payload.runId))
+        ) {
+          return
+        }
+        const current = liveAssistantRef.current
+        if (
+          current?.sessionId === payload.sessionId &&
+          current.streamId === payload.streamId &&
+          payload.revision <= current.revision
+        ) {
+          return
+        }
+        const sameStream =
+          current?.sessionId === payload.sessionId && current.streamId === payload.streamId
+        const next: ActiveLiveAssistant = {
+          sessionId: payload.sessionId,
+          runId: payload.runId,
+          streamId: payload.streamId,
+          revision: payload.revision,
+          text: payload.text,
+          done: payload.done,
+          messageTs: payload.messageTs ?? (sameStream ? current.messageTs : undefined),
+          responseId: payload.responseId ?? (sameStream ? current.responseId : undefined),
+          canonicalStartSeq: sameStream ? current.canonicalStartSeq : nextSeqRef.current,
+        }
+        const alreadyCanonical = messagesRef.current.some((message) => {
+          if (isCanonicalMatch(next, message)) return true
+          return (
+            !next.responseId &&
+            next.messageTs === undefined &&
+            next.done &&
+            message.role === "assistant" &&
+            message.seq === nextSeqRef.current - 1 &&
+            getAssistantText(message) === next.text
+          )
+        })
+        if (alreadyCanonical) {
+          if (sameStream) retireLiveAssistant(next.sessionId, next.streamId)
+          rememberRetiredStream(next.sessionId, next.streamId)
+          return
+        }
+        if (current && !sameStream) {
+          retireLiveAssistant(current.sessionId, current.streamId)
+        }
+        liveAssistantRef.current = next
+        activeRunIdsRef.current.set(next.sessionId, next.runId)
+        setLiveAssistant({
+          sessionId: next.sessionId,
+          runId: next.runId,
+          streamId: next.streamId,
+          revision: next.revision,
+          text: next.text,
+          done: next.done,
+          messageTs: next.messageTs,
+          responseId: next.responseId,
+        })
+        return
+      }
       if (payload.op === "msg" && payload.sessionId && payload.message) {
         const incomingMessage = payload.message
+        if ((incomingMessage.role === "user" || incomingMessage.role === "assistant") &&
+            typeof incomingMessage.ts === "number" && Number.isFinite(incomingMessage.ts)) {
+          const timestamp = incomingMessage.ts / 1000
+          const updatedAt = new Date(incomingMessage.ts).toISOString()
+          updateSessions((current) => current.map((session) =>
+            session.id === payload.sessionId && timestamp > session.mtime
+              ? { ...session, mtime: timestamp, updatedAt }
+              : session,
+          ).sort(compareSessions))
+          if (incomingMessage.role === "user") void refreshSessions()
+        }
         if (payload.sessionId !== sessionIdRef.current) return
         if (incomingMessage.role === "user") {
           setPendingPrompt(undefined)
           pendingPromptRef.current = undefined
           setPendingAttachments([])
           pendingAttachmentsRef.current = []
-          setPendingAttachments([])
-          pendingAttachmentsRef.current = []
         }
-        setMessages((current) => {
-          const index = current.findIndex((message) => message.seq === incomingMessage.seq)
-          if (index < 0) return [...current, incomingMessage]
-          return current.map((message, itemIndex) =>
-            itemIndex === index ? incomingMessage : message,
-          )
-        })
+        const currentMessages = messagesRef.current
+        const index = currentMessages.findIndex((message) => message.seq === incomingMessage.seq)
+        const nextMessages =
+          index < 0
+            ? [...currentMessages, incomingMessage]
+            : currentMessages.map((message, itemIndex) =>
+                itemIndex === index ? incomingMessage : message,
+              )
+        messagesRef.current = nextMessages
+        setMessages(nextMessages)
+        reconcileLiveAssistant([incomingMessage])
         nextSeqRef.current = Math.max(nextSeqRef.current, incomingMessage.seq + 1)
         return
       }
-      if (payload.op === "run.done" && payload.sessionId) {
+      if (payload.op === "run.done" && payload.sessionId && payload.runId) {
+        const activeRunId = activeRunIdsRef.current.get(payload.sessionId)
+        if (activeRunId && activeRunId !== payload.runId) {
+          void refreshSessions()
+          return
+        }
+        activeRunIdsRef.current.delete(payload.sessionId)
         setRunningSessionIds((current) => current.filter((id) => id !== payload.sessionId))
         if (payload.sessionId === sessionIdRef.current) {
           const generation = openGenerationRef.current
@@ -589,9 +788,9 @@ export const useChat = (): UseChat => {
                 pendingPromptRef.current = undefined
                 setPendingAttachments([])
                 pendingAttachmentsRef.current = []
-                pushToast("The response couldn't start. Your message was restored.")
+                pushToast(`${payload.error ?? "The response couldn't start."} Your message was restored.`)
               } else if (payload.error) {
-                pushToast("The response ended with an error.")
+                pushToast(payload.error)
               }
             })
             .catch(() => {
@@ -626,7 +825,10 @@ export const useChat = (): UseChat => {
       fetchMessages,
       newChat,
       pushToast,
+      reconcileLiveAssistant,
+      rememberRetiredStream,
       refreshSessions,
+      retireLiveAssistant,
       sendSocket,
       settlePendingRequest,
       subscribe,
@@ -716,7 +918,7 @@ export const useChat = (): UseChat => {
         const path = selectedSessionId
           ? `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`
           : "/api/runs"
-        const result = await api<{ sessionId: string; running: boolean }>(path, {
+        const result = await api<{ sessionId: string; runId: string; running: boolean }>(path, {
           method: "POST",
           body: JSON.stringify({ prompt: text, attachments: payloadAttachments }),
         })
@@ -735,6 +937,7 @@ export const useChat = (): UseChat => {
           subscribe(result.sessionId)
           history.pushState({}, "", `/c/${encodeURIComponent(result.sessionId)}`)
         }
+        activeRunIdsRef.current.set(result.sessionId, result.runId)
         setRunningSessionIds((current) =>
           current.includes(result.sessionId) ? current : [...current, result.sessionId],
         )
@@ -841,6 +1044,18 @@ export const useChat = (): UseChat => {
       )
       if (result.aborted) {
         setRunningSessionIds((current) => current.filter((id) => id !== selectedSessionId))
+        const active = liveAssistantRef.current
+        const runId = activeRunIdsRef.current.get(selectedSessionId) ?? active?.runId
+        if (runId) {
+          const abortedRuns = abortedRunIdsRef.current
+          abortedRuns.add(getRunKey(selectedSessionId, runId))
+          if (abortedRuns.size > MAX_STALE_STREAM_KEYS) {
+            const oldest = abortedRuns.values().next().value
+            if (typeof oldest === "string") abortedRuns.delete(oldest)
+          }
+        }
+        activeRunIdsRef.current.delete(selectedSessionId)
+        retireLiveAssistant(selectedSessionId)
         setPendingPrompt(undefined)
         pendingPromptRef.current = undefined
         setPendingAttachments([])
@@ -851,7 +1066,7 @@ export const useChat = (): UseChat => {
       pushToast(`Couldn't stop the response. ${getErrorMessage(error)}`)
       return false
     }
-  }, [api, pushToast])
+  }, [api, pushToast, retireLiveAssistant])
 
   const setSearchQuery = useCallback(
     (query: string) => {
@@ -933,8 +1148,10 @@ export const useChat = (): UseChat => {
       const previousSessionId = sessionIdRef.current
       if (previousSessionId) sendSocket({ op: "unsub", sessionId: previousSessionId })
       openGenerationRef.current += 1
+      retireLiveAssistant()
       sessionIdRef.current = undefined
       setSessionId(undefined)
+      messagesRef.current = []
       setMessages([])
       setPendingPrompt(undefined)
       pendingPromptRef.current = undefined
@@ -948,7 +1165,7 @@ export const useChat = (): UseChat => {
     }
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
-  }, [cancelPendingRequests, openSession, sendSocket])
+  }, [cancelPendingRequests, openSession, retireLiveAssistant, sendSocket])
 
   useEffect(() => {
     const poll = window.setInterval(() => {
@@ -967,6 +1184,7 @@ export const useChat = (): UseChat => {
             return
           }
           setRunningSessionIds((current) => current.filter((id) => id !== selectedSessionId))
+          activeRunIdsRef.current.delete(selectedSessionId)
           return fetchMessages(selectedSessionId, generation)
             .then(() => {
               if (
@@ -1028,6 +1246,7 @@ export const useChat = (): UseChat => {
     searchQuery,
     sessions,
     messages,
+    liveAssistant,
     hasMore: Boolean(cursor),
     total,
     matched,

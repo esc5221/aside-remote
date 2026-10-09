@@ -109,7 +109,9 @@ async def _tab_missing_handler(_request: Request, exc: browser.TabNotFound):
 
 @app.exception_handler(ReplError)
 async def _repl_error_handler(_request: Request, exc: ReplError):
-    return JSONResponse({"error": "repl_error", "detail": str(exc)[:1200]}, status_code=502)
+    log.error("browser REPL failed: %s", exc)
+    return JSONResponse({"error": "repl_error", "detail": runner.safe_run_error(exc)},
+                        status_code=502)
 
 
 # ------------------------------------------------------------------ 수명주기
@@ -321,7 +323,7 @@ SESSION_RUNNING_MESSAGE = "Stop the run before deleting this conversation"
 @app.get("/api/sessions", dependencies=[Auth])
 async def api_sessions(
     limit: int = Query(30, ge=1, le=100),
-    cursor: str | None = Query(None, description="이전 페이지의 nextCursor. 키셋 기준 (mtime, id)"),
+    cursor: str | None = Query(None, description="Previous page's nextCursor, ordered by last message time and session ID"),
     q: str | None = Query(None, description="제목·미리보기 전체 검색 (로드된 페이지가 아니라 전 구간)"),
 ):
     return await sessions.list_sessions(_http, limit=limit, cursor=cursor, q=q)
@@ -402,18 +404,23 @@ async def api_run(payload: dict):
     prompt = _with_attachments(payload)
     if not prompt:
         raise HTTPException(400, "prompt required")
-    run = await runner.start_run(
-        prompt,
-        model=payload.get("model"),
-        effort=payload.get("effort"),
-        speed=payload.get("speed"),
-        provider=payload.get("provider"),
-        permission=payload.get("permission"),
-        host=payload.get("host"),
-    )
+    try:
+        run = await runner.start_run(
+            prompt,
+            model=payload.get("model"),
+            effort=payload.get("effort"),
+            speed=payload.get("speed"),
+            provider=payload.get("provider"),
+            permission=payload.get("permission"),
+            host=payload.get("host"),
+        )
+    except Exception as exc:
+        log.exception("conversation start failed")
+        raise HTTPException(502, runner.safe_run_error(exc))
     if not run.session_id:
-        raise HTTPException(502, run.error or "Could not start the conversation")
-    return JSONResponse({"sessionId": run.session_id, "running": run.running}, status_code=202)
+        raise HTTPException(502, runner.safe_run_error(run.error))
+    return JSONResponse({"sessionId": run.session_id, "runId": run.stream_id,
+                         "running": run.running}, status_code=202)
 
 
 @app.post("/api/sessions/{session_id}/messages", dependencies=[Auth])
@@ -425,16 +432,23 @@ async def api_continue(session_id: str, payload: dict):
         raise HTTPException(404, "unknown session")
     existing = runner.get_run(session_id)
     if existing and existing.running:
-        raise HTTPException(409, "This conversation is already running")
+        raise HTTPException(409, runner.RUN_ALREADY_RUNNING_MESSAGE)
     # `aside session resume` takes no model/effort/speed options — the session
     # keeps the settings it was created with.
     try:
         run = await runner.continue_run(session_id, prompt)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc))
-    except FileExistsError as exc:
-        raise HTTPException(409, str(exc))
-    return JSONResponse({"sessionId": session_id, "running": run.running}, status_code=202)
+    except (FileNotFoundError, FileExistsError) as exc:
+        log.exception("conversation continue failed session=%s", session_id)
+        if str(exc) == runner.SESSION_NOT_FOUND_MESSAGE:
+            raise HTTPException(404, runner.SESSION_NOT_FOUND_MESSAGE)
+        if str(exc) == runner.RUN_ALREADY_RUNNING_MESSAGE:
+            raise HTTPException(409, runner.RUN_ALREADY_RUNNING_MESSAGE)
+        raise HTTPException(502, runner.safe_run_error(exc))
+    except Exception as exc:
+        log.exception("conversation continue failed session=%s", session_id)
+        raise HTTPException(502, runner.safe_run_error(exc))
+    return JSONResponse({"sessionId": session_id, "runId": run.stream_id,
+                         "running": run.running}, status_code=202)
 
 
 @app.post("/api/sessions/{session_id}/abort", dependencies=[Auth])
@@ -586,6 +600,8 @@ class Hub:
         self.clients: set[WebSocket] = set()
         self._subs: dict[str, set[WebSocket]] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._stream_tasks: dict[str, asyncio.Task] = {}
+        self._committed_assistants: dict[str, list[tuple[object, object]]] = {}
 
     async def subscribe(self, ws: WebSocket, session_id: str, from_seq: int, from_offset: int) -> None:
         self._subs.setdefault(session_id, set()).add(ws)
@@ -621,16 +637,75 @@ class Hub:
             await _send(ws, {"op": "session.deleted", "sessionId": session_id})
         for ws in list(self._subs.get(session_id, ())):
             self.unsubscribe(ws, session_id)
+        self._committed_assistants.pop(session_id, None)
+        self._stream_tasks.pop(session_id, None)
 
     async def _pump(self, session_id: str, offset: int, seq: int) -> None:
         try:
             async for msg in sessions.tail_messages(session_id, offset, seq):
+                if msg.get("role") in ("user", "assistant"):
+                    sessions.invalidate_index()
+                if msg.get("role") == "assistant":
+                    committed = self._committed_assistants.setdefault(session_id, [])
+                    committed.append((msg.get("ts"), msg.get("responseId")))
+                    del committed[:-64]
                 await self.broadcast(session_id, {"op": "msg", "sessionId": session_id,
                                                   "message": msg})
         except asyncio.CancelledError:
             raise
         except Exception:
             log.exception("pump failed for %s", session_id)
+
+    def _stream_is_committed(self, session_id: str, snapshot: dict) -> bool:
+        message_ts = snapshot.get("messageTs")
+        response_id = snapshot.get("responseId")
+        return any(
+            (message_ts is not None and message_ts == committed_ts)
+            or (response_id is not None and response_id == committed_response_id)
+            for committed_ts, committed_response_id in self._committed_assistants.get(session_id, ())
+        )
+
+    @staticmethod
+    def _stream_payload(session_id: str, snapshot: dict) -> dict:
+        payload = {"op": "msg.delta", "sessionId": session_id, **snapshot}
+        text = payload.get("text")
+        if isinstance(text, str):
+            payload["text"] = sessions.rewrite_local_paths(text)
+        return payload
+
+    async def send_stream_snapshot(self, ws: WebSocket, session_id: str) -> None:
+        run = runner.get_run(session_id)
+        task = self._stream_tasks.get(session_id)
+        if run and (task is None or task.done()):
+            while not run.stream_queue.empty():
+                try:
+                    run.stream_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+        snapshot = run.stream_snapshot if run else None
+        if snapshot and not self._stream_is_committed(session_id, snapshot):
+            await _send(ws, self._stream_payload(session_id, snapshot))
+
+    def ensure_stream(self, run: "runner.Run") -> None:
+        sid = run.session_id
+        if not sid:
+            return
+        task = self._stream_tasks.get(sid)
+        if task is None or task.done():
+            self._stream_tasks[sid] = asyncio.create_task(self.watch_stream(run))
+
+    async def watch_stream(self, run: "runner.Run") -> None:
+        sid = run.session_id
+        if not sid:
+            return
+        try:
+            async for snapshot in runner.stream_events(run):
+                if not self._stream_is_committed(sid, snapshot):
+                    await self.broadcast(sid, self._stream_payload(sid, snapshot))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("stream pump failed for %s", sid)
 
     async def watch_run(self, run: "runner.Run") -> None:
         """프로세스 종료를 기다렸다가 run.done 을 쏜다. jsonl 마지막 줄이 도착할 시간을 준다."""
@@ -641,12 +716,13 @@ class Hub:
             await asyncio.sleep(0.4)
         await asyncio.sleep(config.JSONL_POLL_SEC * 3)
         sessions.invalidate_index()   # 목록 캐시(TTL 4s)를 기다리지 않고 즉시 반영
-        await self.broadcast(sid, {
-            "op": "run.done", "sessionId": sid,
+        payload = {
+            "op": "run.done", "sessionId": sid, "runId": run.stream_id,
             "exitCode": run.exit_code,
-            "output": (run.output or "")[:4000],
-            "error": run.error,
-        })
+        }
+        if run.error or run.exit_code:
+            payload["message"] = runner.safe_run_error(run.error or run.output)
+        await self.broadcast(sid, payload)
         log.info("run.done broadcast session=%s → ntfy", sid)
         await push_ntfy(sid, run)
 
@@ -667,8 +743,11 @@ async def push_ntfy(session_id: str, run: "runner.Run") -> None:
                 break
     except Exception:
         pass
-    body = [ln for ln in (run.output or "").strip().splitlines() if ln.strip()]
-    tail = "\n".join(body[-6:])[:600] or ("Failed" if run.exit_code else "Complete")
+    if run.error or run.exit_code:
+        tail = runner.safe_run_error(run.error or run.output)
+    else:
+        body = [ln for ln in (run.output or "").strip().splitlines() if ln.strip()]
+        tail = "\n".join(body[-6:])[:600] or "Complete"
     try:
         await _http.post(
             config.NTFY_URL,
@@ -719,24 +798,27 @@ def _begin_run_request(request_id: str) -> tuple[dict | None, bool]:
 
 
 def _finish_run_request(request_id: str, status: str, *, session_id: str | None = None,
+                        run_id: str | None = None,
                         message: str | None = None) -> None:
     item = {"status": status, "updatedAt": time.monotonic()}
     if session_id:
         item["sessionId"] = session_id
+    if run_id:
+        item["runId"] = run_id
     if message:
         item["message"] = message
     _run_requests[request_id] = item
 
 
 def _public_run_request(item: dict) -> dict:
-    return {key: item[key] for key in ("status", "sessionId", "message") if key in item}
+    return {key: item[key] for key in ("status", "sessionId", "runId", "message") if key in item}
 
 
 async def _send_run_request(ws: WebSocket, request_id: str, item: dict) -> None:
     status = item["status"]
     if status == "started":
         await _send(ws, {"op": "run.started", "requestId": request_id,
-                         "sessionId": item["sessionId"]})
+                         "sessionId": item["sessionId"], "runId": item["runId"]})
     elif status == "error":
         await _send(ws, {"op": "error", "requestId": request_id,
                          "message": item["message"]})
@@ -832,6 +914,10 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
             return
         await hub.subscribe(ws, sid, int(msg.get("fromSeq") or 0), int(msg.get("fromOffset") or 0))
         await _send(ws, {"op": "sub.ok", "sessionId": sid, "requestId": rid})
+        await hub.send_stream_snapshot(ws, sid)
+        run = runner.get_run(sid)
+        if run:
+            hub.ensure_stream(run)
         return
 
     if op == "unsub":
@@ -856,22 +942,27 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
                                          permission=msg.get("permission"),
                                          host=msg.get("host"))
         except Exception as exc:
+            log.exception("websocket conversation start failed")
+            message = runner.safe_run_error(exc)
             if run_request_id:
-                _finish_run_request(run_request_id, "error", message=str(exc))
-            await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
+                _finish_run_request(run_request_id, "error", message=message)
+            await _send(ws, {"op": "error", "requestId": rid, "message": message})
             return
         if not run.session_id:
-            message = run.error or "Could not start the conversation"
+            message = runner.safe_run_error(run.error)
             if run_request_id:
                 _finish_run_request(run_request_id, "error", message=message)
             await _send(ws, {"op": "error", "requestId": rid,
                              "message": message})
             return
         if run_request_id:
-            _finish_run_request(run_request_id, "started", session_id=run.session_id)
+            _finish_run_request(run_request_id, "started", session_id=run.session_id,
+                                run_id=run.stream_id)
         await hub.subscribe(ws, run.session_id, 0, 0)
+        await _send(ws, {"op": "run.started", "requestId": rid,
+                         "sessionId": run.session_id, "runId": run.stream_id})
+        hub.ensure_stream(run)
         asyncio.create_task(hub.watch_run(run))
-        await _send(ws, {"op": "run.started", "requestId": rid, "sessionId": run.session_id})
         return
 
     if op == "continue":
@@ -888,7 +979,7 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
             return
         existing = runner.get_run(sid)
         if existing and existing.running:
-            message = "This conversation is already running"
+            message = runner.RUN_ALREADY_RUNNING_MESSAGE
             if run_request_id:
                 _finish_run_request(run_request_id, "error", message=message)
             await _send(ws, {"op": "error", "requestId": rid,
@@ -901,14 +992,19 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
             await hub.subscribe(ws, sid, len(_msgs), offset)
             run = await runner.continue_run(sid, prompt)
         except Exception as exc:
+            log.exception("websocket conversation continue failed session=%s", sid)
+            message = runner.safe_run_error(exc)
             if run_request_id:
-                _finish_run_request(run_request_id, "error", message=str(exc))
-            await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
+                _finish_run_request(run_request_id, "error", message=message)
+            await _send(ws, {"op": "error", "requestId": rid, "message": message})
             return
         if run_request_id:
-            _finish_run_request(run_request_id, "started", session_id=sid)
+            _finish_run_request(run_request_id, "started", session_id=sid,
+                                run_id=run.stream_id)
+        await _send(ws, {"op": "run.started", "requestId": rid,
+                         "sessionId": sid, "runId": run.stream_id})
+        hub.ensure_stream(run)
         asyncio.create_task(hub.watch_run(run))
-        await _send(ws, {"op": "run.started", "requestId": rid, "sessionId": sid})
         return
 
     if op == "abort":
@@ -921,7 +1017,9 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         try:
             tabs = await browser.list_tabs(force=bool(msg.get("refresh")))
         except Exception as exc:
-            await _send(ws, {"op": "error", "requestId": rid, "message": str(exc)})
+            log.exception("websocket browser tab listing failed")
+            await _send(ws, {"op": "error", "requestId": rid,
+                             "message": runner.safe_run_error(exc)})
             return
         await _send(ws, {"op": "tabs", "requestId": rid, "count": len(tabs), "tabs": tabs})
         return

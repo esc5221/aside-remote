@@ -13,10 +13,10 @@ phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:879
 
 What you get:
 
-- **Chat UI** for your Aside agent — conversation list (search, paging), streaming
-  answers with tool-activity folded into pills, image attachments (camera on phones),
+- **Chat UI** for your Aside agent — conversation list (search, paging), live response
+  fragments with linked citations and folded tool activity, image attachments (camera on phones),
   markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
-  Wanted Sans, and outline icons. Change the theme in Settings → Appearance; the choice persists after reload.
+  Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
   work on any tab, and open a live preview sheet with pause and manual refresh.
 - **Conversation deletion** — confirm before deleting a conversation and its local
