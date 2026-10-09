@@ -3,6 +3,16 @@ export type TextBlock = {
   text: string
 }
 
+export type BrowserTab = {
+  targetId: string
+  title: string
+  url: string
+  favicon?: string | null
+  active: boolean
+  loaded: boolean | null
+  lastAccessed?: number | null
+}
+
 export type ThinkingBlock = {
   type: "thinking"
   text: string

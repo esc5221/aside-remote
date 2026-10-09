@@ -15,6 +15,8 @@ import { formatRequestError } from "./errors"
 import { tokens } from "./tokens.stylex"
 import { focusDialogSurface } from "./ui"
 import { useAutoRefresh } from "./useAutoRefresh"
+import type { BrowserTab } from "./types"
+import { isTabResponse } from "./browser"
 
 const TAB_REFRESH_INTERVAL_MS = 2_000
 const PREVIEW_REFRESH_INTERVAL_MS = 1_000
@@ -22,26 +24,20 @@ const THUMBNAIL_REFRESH_INTERVAL_MS = 10_000
 const ICON_SIZE = 20
 const ICON_STROKE = 1.8
 
-type BrowserTab = {
-  targetId: string
-  title: string
-  url: string
-  favicon?: string | null
-  active: boolean
-  loaded: boolean | null
-  lastAccessed?: number | null
-}
-
 type BrowserPanelProps = {
   request: (path: string, init?: RequestInit) => Promise<Response>
   notify: (message: string, kind?: "error" | "success") => void
   onStart: (prompt: string) => void
   onClose: () => void
+  sessionId?: string
+  initialTargetId?: string
 }
 
 type PreviewStatus = "idle" | "loading" | "ready" | "asleep" | "missing" | "error"
 
-export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanelProps) {
+export function BrowserPanel({ request, notify, onStart, onClose, sessionId, initialTargetId }: BrowserPanelProps) {
+  const sessionQuery = sessionId ? `&session=${encodeURIComponent(sessionId)}` : ""
+  const initialTargetRef = useRef(initialTargetId)
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [selectedTab, setSelectedTab] = useState<BrowserTab>()
   const [query, setQuery] = useState("")
@@ -85,7 +81,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
     const generation = ++listGenerationRef.current
     setIsLoadingTabs(true)
     try {
-      const response = await request("/api/tabs?refresh=true", { cache: "no-store", signal })
+      const response = await request(`/api/tabs?refresh=true${sessionQuery}`, { cache: "no-store", signal })
       const value: unknown = await response.json()
       if (signal?.aborted || generation !== listGenerationRef.current) return
       if (!isTabResponse(value)) throw new Error("Invalid tab list.")
@@ -93,14 +89,16 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
         (first, second) => (second.lastAccessed ?? 0) - (first.lastAccessed ?? 0),
       )
       setTabs(sortedTabs)
-      setSelectedTab((current) => current ? sortedTabs.find((tab) => tab.targetId === current.targetId) ?? current : undefined)
+      const initialTarget = initialTargetRef.current
+      setSelectedTab((current) => current ? sortedTabs.find((tab) => tab.targetId === current.targetId) ?? current : sortedTabs.find((tab) => tab.targetId === initialTarget))
+      if (sortedTabs.some((tab) => tab.targetId === initialTarget)) initialTargetRef.current = undefined
       setListError(undefined)
     } catch (error) {
       if (!signal?.aborted && generation === listGenerationRef.current) setListError(getErrorMessage(error))
     } finally {
       if (generation === listGenerationRef.current) setIsLoadingTabs(false)
     }
-  }, [request])
+  }, [request, sessionQuery])
 
   useAutoRefresh(loadTabs, TAB_REFRESH_INTERVAL_MS)
 
@@ -116,7 +114,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
     setPreviewStatus("loading")
     try {
       const response = await request(
-        `/api/tabs/${encodeURIComponent(selectedTabId)}/shot?fresh=true`,
+        `/api/tabs/${encodeURIComponent(selectedTabId)}/shot?fresh=true${sessionQuery}`,
         { cache: "no-store", signal },
       )
       const blob = await response.blob()
@@ -136,7 +134,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
       const status = getErrorStatus(error)
       setPreviewStatus(status === 409 ? "asleep" : status === 404 ? "missing" : "error")
     }
-  }, [request, selectedTabId, isSelectedTabAsleep, isSelectedTabMissing])
+  }, [request, selectedTabId, isSelectedTabAsleep, isSelectedTabMissing, sessionQuery])
 
   useEffect(() => {
     captureGenerationRef.current += 1
@@ -161,14 +159,14 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
     setBusyAction(action)
     try {
       if (action === "focus") {
-        await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}/focus`, { method: "POST" })
+        await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}/focus?${sessionQuery.slice(1)}`, { method: "POST" })
         notify("Focus request sent.", "success")
       } else if (action === "open") {
-        await request("/api/tabs", { method: "POST", body: JSON.stringify({ url: selectedTab.url }) })
+        await request(`/api/tabs?${sessionQuery.slice(1)}`, { method: "POST", body: JSON.stringify({ url: selectedTab.url }) })
         notify("Opened a new copy of the tab.", "success")
         await loadTabs()
       } else {
-        await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}`, { method: "DELETE" })
+        await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}?${sessionQuery.slice(1)}`, { method: "DELETE" })
         notify("Tab closed.", "success")
         setSelectedTab(undefined)
         await loadTabs()
@@ -192,7 +190,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
     }
     setBusyAction("new")
     try {
-      await request("/api/tabs", { method: "POST", body: JSON.stringify({ url }) })
+      await request(`/api/tabs?${sessionQuery.slice(1)}`, { method: "POST", body: JSON.stringify({ url }) })
       setNewTabUrl("")
       setIsOpenFormVisible(false)
       notify("Tab opened.", "success")
@@ -307,7 +305,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
             {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={tabs.length ? "No matching tabs" : "No browser tabs"} detail={tabs.length ? "Try a different search or show all tabs." : "Open a tab here or in Aside."} />}
             {filteredTabs.map((tab) => (
               <button key={tab.targetId} data-browser-tab={tab.targetId} title={tab.title || "Untitled tab"} {...stylex.props(styles.tabRow)} type="button" onClick={() => setSelectedTab(tab)}>
-                <TabThumbnail tab={tab} request={request} />
+                <TabThumbnail tab={tab} request={request} sessionQuery={sessionQuery} />
                 <span {...stylex.props(styles.tabCopy)}>
                   <span {...stylex.props(styles.rowTitle)}>{tab.title || "Untitled tab"}</span>
                   <span {...stylex.props(styles.rowMeta)}>{getHost(tab.url)} · {tab.loaded === false ? "Asleep" : tab.active ? "Active" : "Available"}</span>
@@ -343,7 +341,7 @@ export function BrowserPanel({ request, notify, onStart, onClose }: BrowserPanel
   )
 }
 
-function TabThumbnail({ tab, request }: { tab: BrowserTab; request: BrowserPanelProps["request"] }) {
+function TabThumbnail({ tab, request, sessionQuery }: { tab: BrowserTab; request: BrowserPanelProps["request"]; sessionQuery: string }) {
   const [src, setSrc] = useState<string>()
   const [isVisible, setIsVisible] = useState(false)
   const thumbnailRef = useRef<HTMLSpanElement>(null)
@@ -360,7 +358,7 @@ function TabThumbnail({ tab, request }: { tab: BrowserTab; request: BrowserPanel
 
   const capture = useCallback(async (signal: AbortSignal) => {
     try {
-      const response = await request(`/api/tabs/${encodeURIComponent(tab.targetId)}/shot?fresh=true`, { cache: "no-store", signal })
+      const response = await request(`/api/tabs/${encodeURIComponent(tab.targetId)}/shot?fresh=true${sessionQuery}`, { cache: "no-store", signal })
       const blob = await response.blob()
       if (signal.aborted || !blob.type.startsWith("image/")) return
       const previousUrl = objectUrlRef.current
@@ -370,7 +368,7 @@ function TabThumbnail({ tab, request }: { tab: BrowserTab; request: BrowserPanel
     } catch {
       // Keep the last thumbnail while the next automatic capture retries.
     }
-  }, [request, tab.targetId])
+  }, [request, tab.targetId, sessionQuery])
 
   useAutoRefresh(capture, THUMBNAIL_REFRESH_INTERVAL_MS, isVisible && !isAsleep)
 
@@ -401,23 +399,6 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   return <div {...stylex.props(styles.empty)}><strong>{title}</strong><span>{detail}</span></div>
 }
 
-function isTabResponse(value: unknown): value is { tabs: BrowserTab[] } {
-  if (typeof value !== "object" || value === null) return false
-  const tabs = Reflect.get(value, "tabs")
-  return Array.isArray(tabs) && tabs.every((tab) => {
-    if (typeof tab !== "object" || tab === null) return false
-    const loaded = Reflect.get(tab, "loaded")
-    const favicon = Reflect.get(tab, "favicon")
-    const lastAccessed = Reflect.get(tab, "lastAccessed")
-    return typeof Reflect.get(tab, "targetId") === "string"
-      && typeof Reflect.get(tab, "url") === "string"
-      && typeof Reflect.get(tab, "title") === "string"
-      && typeof Reflect.get(tab, "active") === "boolean"
-      && (loaded === null || typeof loaded === "boolean")
-      && (favicon == null || typeof favicon === "string")
-      && (lastAccessed == null || typeof lastAccessed === "number" && Number.isFinite(lastAccessed))
-  })
-}
 
 function getErrorStatus(error: unknown) {
   if (typeof error !== "object" || error === null) return undefined

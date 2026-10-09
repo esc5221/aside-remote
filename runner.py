@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import config
+from daemon import repair_browser_binding
 import sessions
 
 log = logging.getLogger("aside-remote.runner")
@@ -495,6 +496,7 @@ async def continue_run(session_id: str, prompt: str, *, model: str | None = None
             _remove_stream_log(stream_log_path)
             raise FileExistsError(RUN_ALREADY_RUNNING_MESSAGE)
         try:
+            await repair_browser_binding(session_id)
             proc, master = await _spawn(args)
         except Exception:
             _remove_stream_log(stream_log_path)
