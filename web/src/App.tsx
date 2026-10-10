@@ -11,13 +11,13 @@ import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
 import { BrowserLive } from './BrowserLive';
+import { BrowserPanel } from './BrowserPanel';
 import { ImagePreview } from './ImagePreview';
 import { Settings } from './Settings';
 import { RenameConversation, SessionMenu, type SessionMenuTarget } from './SessionMenu';
 import { applyTheme, THEME_STORAGE_KEY, applyTextSize, loadTextSize, TEXT_SIZE_STORAGE_KEY, type Theme } from './theme';
 import { ICON_STROKE, SESSION_MENU_LABEL, CloseButton, Dialog, DialogBackdropReset, IconButton, focusDialogSurface, resolveDialogReturnFocus, trapDialogFocus, styles as ui } from './ui';
 
-const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })));
 const Messages = lazy(() => import('./Messages').then(module => ({ default: module.Messages })));
 const ZOOM_GESTURE_EVENTS = ['gesturestart', 'gesturechange'];
 const TOAST_STACK_LIMIT = 3;
@@ -230,7 +230,7 @@ export function App() {
       <Composer chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} isKeyboardOpen={isKeyboardOpen} />
     </main>
     <AnimatePresence>{isDrawer && <Drawer key="drawer" onClose={() => { setMenuSession(undefined); setDrawer(false); }}><Sidebar chat={chat} isDrawer onClose={() => { setMenuSession(undefined); setDrawer(false); }} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onMenu={setMenuSession} /></Drawer>}</AnimatePresence>
-    <AnimatePresence mode="wait">{panel && <Dialog key={panel === 'browser' ? `browser:${browserTarget ?? "all"}` : panel} title={panel === 'browser' ? 'Browser' : 'Settings'} isWide={panel === 'browser'} onClose={closePanel}>{panel === 'settings' ? <Settings chat={chat} notifications={notifications} notify={notify} onClose={closePanel} isDarkMode={theme === 'dark'} onThemeToggle={toggleTheme} textSize={textSize} onTextSizeChange={changeTextSize} /> : <Suspense fallback={<p role="status" {...stylex.props(ui.muted)}>Loading browser…</p>}><BrowserPanel initialTargetId={browserTarget} sessionId={browserTarget ? chat.sessionId : undefined} request={chat.request} notify={notify} onClose={closePanel} onStart={prompt => { closePanel(); if (!browserTarget) newChat(); setDraft(prompt); }} /></Suspense>}</Dialog>}</AnimatePresence>
+    <AnimatePresence mode="wait">{panel && <Dialog key={panel === 'browser' ? `browser:${browserTarget ?? "all"}` : panel} title={panel === 'browser' ? 'Browser' : 'Settings'} isWide={panel === 'browser'} onClose={closePanel}>{panel === 'settings' ? <Settings chat={chat} notifications={notifications} notify={notify} onClose={closePanel} isDarkMode={theme === 'dark'} onThemeToggle={toggleTheme} textSize={textSize} onTextSizeChange={changeTextSize} /> : <BrowserPanel initialTargetId={browserTarget} sessionId={browserTarget ? chat.sessionId : undefined} request={chat.request} notify={notify} onClose={closePanel} onStart={prompt => { closePanel(); if (!browserTarget) newChat(); setDraft(prompt); }} />}</Dialog>}</AnimatePresence>
     {menuSession && !chat.authError && <SessionMenu key={menuSession.id} target={menuSession} chat={chat} onClose={() => setMenuSession(undefined)} notify={notify} onRename={setRenameTarget} onDelete={session => { setDrawer(false); setDeleteTarget(session); }} />}
     <AnimatePresence>{renameTarget && <Dialog key={renameTarget.id} title="Rename conversation" onClose={() => setRenameTarget(undefined)}><RenameConversation session={renameTarget} chat={chat} onClose={() => setRenameTarget(undefined)} /></Dialog>}</AnimatePresence>
     <AnimatePresence>{deleteTarget && <Dialog key={deleteTarget.id} title="Delete conversation?" onClose={() => setDeleteTarget(undefined)}><div {...stylex.props(styles.dialogHeader)}><h2 {...stylex.props(ui.title)}>Delete conversation?</h2><CloseButton onClick={() => setDeleteTarget(undefined)} /></div><p {...stylex.props(styles.deleteTitle)}>{deleteTarget.title}</p><p {...stylex.props(ui.muted)}>This also deletes the original conversation and its files in Aside. This cannot be undone.</p><div {...stylex.props(styles.dialogActions)}><button {...stylex.props(ui.button)} autoFocus onClick={() => setDeleteTarget(undefined)}>Cancel</button><button {...stylex.props(ui.button, ui.danger)} onClick={() => { setDeleteTarget(undefined); void chat.deleteSession(deleteTarget.id); }}>Delete</button></div></Dialog>}</AnimatePresence>
