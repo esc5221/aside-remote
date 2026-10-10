@@ -96,6 +96,9 @@ RUN_SESSION_DETECT_SEC = 25.0
 JSONL_POLL_SEC = 0.35
 
 # --- notifications (optional) -----------------------------------------
+WEB_PUSH_DIR = Path(_env(
+    "ASIDE_REMOTE_WEB_PUSH_DIR", str(HOME / ".aside-remote/web-push")
+)).expanduser()
 # Push a note (ntfy.sh protocol) when a run finishes. Off unless configured.
 NTFY_URL = _env("ASIDE_REMOTE_NTFY", "")
 NTFY_TOPIC = _env("ASIDE_REMOTE_NTFY_TOPIC", "aside-runs")

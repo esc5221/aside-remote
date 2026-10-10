@@ -34,6 +34,7 @@ import followups
 import uploads
 import runner
 import sessions
+import web_push
 from mcp_client import ReplError, mcp
 
 logging.basicConfig(
@@ -60,6 +61,7 @@ log = logging.getLogger("aside-remote")
 STARTED_AT = time.time()
 app = FastAPI(title="aside-remote", docs_url=None, redoc_url=None)
 _http: httpx.AsyncClient | None = None
+push_notifications = web_push.WebPushStore(config.WEB_PUSH_DIR)
 
 
 # ------------------------------------------------------------------ 인증
@@ -172,6 +174,53 @@ async def web_asset(path: str):
         raise HTTPException(404, "not found")
     return FileResponse(asset,
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/manifest.webmanifest")
+async def web_manifest():
+    return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(WEB_DIR / "sw.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/api/push/config", dependencies=[Auth])
+async def push_config():
+    return {"publicKey": push_notifications.public_key()}
+
+
+@app.put("/api/push/subscriptions", dependencies=[Auth])
+async def push_subscribe(payload: dict):
+    try:
+        subscription_id = push_notifications.subscribe(web_push.validate_subscription(payload))
+    except ValueError as error:
+        raise HTTPException(400, str(error))
+    return {"id": subscription_id}
+
+
+@app.delete("/api/push/subscriptions/{subscription_id}", dependencies=[Auth])
+async def push_unsubscribe(subscription_id: str):
+    push_notifications.unsubscribe(subscription_id)
+    return {"ok": True}
+
+
+@app.post("/api/push/presence", dependencies=[Auth])
+async def push_presence(payload: dict):
+    subscription_id = payload.get("subscriptionId")
+    client_id = payload.get("clientId")
+    revision = payload.get("revision")
+    is_focused = payload.get("isFocused")
+    if (not isinstance(subscription_id, str) or not re.fullmatch(r"[a-f0-9]{64}", subscription_id)
+            or not isinstance(client_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", client_id)
+            or not isinstance(revision, int) or isinstance(revision, bool) or revision < 0
+            or not isinstance(is_focused, bool)):
+        raise HTTPException(400, "Invalid notification presence.")
+    push_notifications.presence(subscription_id, client_id, revision, is_focused)
+    return {"ok": True}
 
 
 @app.get("/api/web-token")
@@ -424,6 +473,8 @@ async def api_run(payload: dict):
         raise HTTPException(502, runner.safe_run_error(exc))
     if not run.session_id:
         raise HTTPException(502, runner.safe_run_error(run.error))
+    hub.ensure_stream(run)
+    asyncio.create_task(hub.watch_run(run))
     return JSONResponse({"sessionId": run.session_id, "runId": run.stream_id,
                          "running": run.running}, status_code=202)
 
@@ -452,6 +503,8 @@ async def api_continue(session_id: str, payload: dict):
     except Exception as exc:
         log.exception("conversation continue failed session=%s", session_id)
         raise HTTPException(502, runner.safe_run_error(exc))
+    hub.ensure_stream(run)
+    asyncio.create_task(hub.watch_run(run))
     return JSONResponse({"sessionId": session_id, "runId": run.stream_id,
                          "running": run.running}, status_code=202)
 
@@ -856,8 +909,11 @@ class Hub:
         if run.error or run.exit_code:
             payload["message"] = runner.safe_run_error(run.error or run.output)
         await self.broadcast(sid, payload)
-        log.info("run.done broadcast session=%s → ntfy", sid)
-        await push_ntfy(sid, run)
+        log.info("run.done broadcast session=%s", sid)
+        notifications = [push_ntfy(sid, run)]
+        if not run.is_aborted:
+            notifications.append(push_notifications.complete(sid, run.stream_id, has_error=bool(run.error or run.exit_code)))
+        await asyncio.gather(*notifications)
 
 
 async def push_ntfy(session_id: str, run: "runner.Run") -> None:

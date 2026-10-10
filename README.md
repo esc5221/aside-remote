@@ -26,9 +26,20 @@ What you get:
 - **Conversation deletion** — confirm before deleting a conversation and its local
   session files. Running conversations must be stopped in Aside before deletion.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
-- Optional **push notification** (ntfy) when a run finishes.
+- **Native Web Push notifications** when a response finishes while this device is
+  away from the app, including iPhone Home Screen apps. Enable them in Settings →
+  Notifications. Optional ntfy notifications remain available.
 
 The UI language is English. Conversation content keeps its original language.
+
+On iOS 16.4 or later, open the HTTPS site in Safari, add it to your Home Screen,
+then open that app and choose Settings → Notifications → Enable notifications.
+Allow the iOS permission prompt once. Alerts open the matching conversation and
+work while the app is in the background or closed. Keep the Mac bridge running
+and online. Focused devices do not receive completion alerts, and stopping a
+response in Aside Remote does not send one. Notification keys and subscriptions are
+created automatically in `~/.aside-remote/web-push` with owner-only file access;
+no Apple developer account or manual push credentials are needed.
 
 The app follows a ChatGPT iOS-inspired conversation layout with an anchored composer.
 [DESIGN.md](DESIGN.md) documents the reference, tokens, states, and responsive rules.

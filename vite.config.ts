@@ -14,7 +14,9 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:8800',
       '/ws': { target: 'ws://127.0.0.1:8800', ws: true },
       '/icons': 'http://127.0.0.1:8800',
-      '/vendor': 'http://127.0.0.1:8800'
+      '/vendor': 'http://127.0.0.1:8800',
+      '/sw.js': 'http://127.0.0.1:8800',
+      '/manifest.webmanifest': 'http://127.0.0.1:8800'
     }
   }
 });

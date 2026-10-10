@@ -8,10 +8,11 @@ import { tokens } from './tokens.stylex';
 import { formatRequestError } from './errors';
 import { TEXT_SIZES } from './theme';
 import { useAutoRefresh } from './useAutoRefresh';
+import type { PushNotifications } from './notifications';
 
 type Health = { asideApp: boolean; daemon?: { ready?: boolean; error?: string } };
 
-export function Settings({ chat, onClose, notify, isDarkMode, onThemeToggle, textSize, onTextSizeChange }: { chat: UseChat; onClose: () => void; notify: (text: string, kind?: 'error' | 'success') => void; isDarkMode: boolean; onThemeToggle: () => void; textSize: number; onTextSizeChange: (size: number) => void }) {
+export function Settings({ chat, onClose, notify, notifications, isDarkMode, onThemeToggle, textSize, onTextSizeChange }: { chat: UseChat; onClose: () => void; notify: (text: string, kind?: 'error' | 'success') => void; notifications: PushNotifications; isDarkMode: boolean; onThemeToggle: () => void; textSize: number; onTextSizeChange: (size: number) => void }) {
   const shouldReduceMotion = useReducedMotion();
   const [token, setToken] = useState(''); const [isSaving, setSaving] = useState(false); const [health, setHealth] = useState<Health>(); const [error, setError] = useState('');
   const [browserStatus, setBrowserStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
@@ -37,6 +38,11 @@ export function Settings({ chat, onClose, notify, isDarkMode, onThemeToggle, tex
     </section>
     <section><h3 {...stylex.props(styles.heading)}>Access token</h3><p id="access-token-help" {...stylex.props(ui.muted)}>Only needed when your connection does not sign you in automatically.</p>
       <form onSubmit={async event => { event.preventDefault(); setSaving(true); try { if (await chat.saveToken(token)) setToken(''); } finally { setSaving(false); } }}><input {...stylex.props(ui.field)} type="password" value={token} autoComplete="off" aria-label="Access token" aria-describedby="access-token-help" placeholder="Paste your access token" onChange={event => setToken(event.target.value)} /><button {...stylex.props(ui.button, ui.primary, styles.save)} disabled={isSaving || !token.trim()}>{isSaving ? 'Connecting…' : 'Connect'}</button></form>
+    </section>
+    <section><h3 {...stylex.props(styles.heading)}>Notifications</h3>
+      <div {...stylex.props(styles.statusRow)}><span>Response notifications</span><span {...stylex.props(ui.muted)}>{notifications.status === 'enabled' ? 'Enabled' : notifications.status === 'checking' ? 'Checking…' : notifications.status === 'denied' ? 'Blocked' : notifications.status === 'unavailable' ? 'Unavailable' : 'Off'}</span></div>
+      <p {...stylex.props(ui.muted)}>{notifications.unavailableReason || (notifications.status === 'denied' ? 'Allow notifications for Aside in your device settings.' : 'Get notified when a response finishes while you are away from the app. Tap a notification to open its conversation.')}</p>
+      {notifications.status !== 'unavailable' && notifications.status !== 'denied' && <button type="button" {...stylex.props(ui.button)} disabled={notifications.isUpdating || notifications.status === 'checking' || !chat.isReady || !!chat.authError} onClick={() => { void (notifications.status === 'enabled' ? notifications.disable() : notifications.enable()); }}>{notifications.isUpdating ? 'Updating…' : notifications.status === 'enabled' ? 'Turn off notifications' : 'Enable notifications'}</button>}
     </section>
     <section><h3 {...stylex.props(styles.heading)}>Appearance</h3><div {...stylex.props(styles.statusRow)}><span>Dark mode</span><motion.button type="button" role="switch" aria-label="Dark mode" aria-checked={isDarkMode} whileTap={shouldReduceMotion ? undefined : { scale: .94 }} onClick={onThemeToggle} {...stylex.props(styles.themeSwitch)}><motion.span animate={{ backgroundColor: isDarkMode ? 'var(--text)' : 'var(--hover)' }} transition={{ duration: shouldReduceMotion ? 0 : .18 }} {...stylex.props(styles.switchTrack)}><motion.span animate={{ x: isDarkMode ? 20 : 0 }} transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 34 }} {...stylex.props(styles.switchThumb)} /></motion.span></motion.button></div>
       <div {...stylex.props(styles.statusRow)}><label htmlFor="text-size">Text size</label><select id="text-size" value={textSize} onChange={event => onTextSizeChange(Number(event.target.value))} {...stylex.props(styles.textSize)}>{TEXT_SIZES.map(size => <option key={size} value={size}>{size}%</option>)}</select></div>

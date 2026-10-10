@@ -63,6 +63,7 @@ class Run:
     exit_code: int | None = None
     output: str = ""
     error: str | None = None
+    is_aborted: bool = False
     stream_snapshot: dict | None = None
     stream_complete: bool = False
     stream_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=256))
@@ -518,6 +519,9 @@ async def abort(session_id: str) -> bool:
     데몬에 중단을 시킨다 → 그걸 먼저 부르고, 그 다음 붙어 있던 로컬 PTY 클라이언트를 정리한다.
     stop 은 이미 끝난 세션에도 안전하다(상태 문자열만 찍고 exit 0).
     """
+    run = _runs.get(session_id)
+    if run and run.running:
+        run.is_aborted = True
     stopped = await stop_session(session_id)
 
     run = _runs.get(session_id)

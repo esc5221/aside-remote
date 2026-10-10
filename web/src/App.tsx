@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex';
 import { ArrowDown, Check, CircleAlert, Ellipsis, SquarePen, X } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion, usePresence, useReducedMotion } from 'motion/react';
 import { useChat } from './chat';
+import { usePushNotifications } from './notifications';
 import type { ChatSession, Toast } from './types';
 import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
@@ -46,6 +47,7 @@ export function App() {
   function notify(message: string, kind: 'success' | 'error' = 'success') {
     const id = crypto.randomUUID(); setLocalToasts(current => [...current, { id, createdAt: Date.now(), message, tone: kind }]);
   }
+  const notifications = usePushNotifications(chat, notify);
   const dismissToast = useCallback((id: string) => { chat.dismissToast(id); setLocalToasts(current => current.filter(toast => toast.id !== id)); }, [chat.dismissToast]);
   function changeTextSize(size: number) {
     applyTextSize(size); setTextSize(size);
@@ -127,7 +129,7 @@ export function App() {
       <Composer chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} />
     </main>
     <AnimatePresence>{isDrawer && <Drawer key="drawer" onClose={() => setDrawer(false)}><Sidebar chat={chat} isDrawer onClose={() => setDrawer(false)} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onDelete={session => { setDrawer(false); setDeleteTarget(session); }} /></Drawer>}</AnimatePresence>
-    <AnimatePresence mode="wait">{panel && <Dialog key={panel === 'browser' ? `browser:${browserTarget ?? "all"}` : panel} title={panel === 'browser' ? 'Browser' : 'Settings'} isWide={panel === 'browser'} onClose={closePanel}>{panel === 'settings' ? <Settings chat={chat} notify={notify} onClose={closePanel} isDarkMode={theme === 'dark'} onThemeToggle={toggleTheme} textSize={textSize} onTextSizeChange={changeTextSize} /> : <Suspense fallback={<p role="status" {...stylex.props(ui.muted)}>Loading browser…</p>}><BrowserPanel initialTargetId={browserTarget} sessionId={browserTarget ? chat.sessionId : undefined} request={chat.request} notify={notify} onClose={closePanel} onStart={prompt => { closePanel(); if (!browserTarget) newChat(); setDraft(prompt); }} /></Suspense>}</Dialog>}</AnimatePresence>
+    <AnimatePresence mode="wait">{panel && <Dialog key={panel === 'browser' ? `browser:${browserTarget ?? "all"}` : panel} title={panel === 'browser' ? 'Browser' : 'Settings'} isWide={panel === 'browser'} onClose={closePanel}>{panel === 'settings' ? <Settings chat={chat} notifications={notifications} notify={notify} onClose={closePanel} isDarkMode={theme === 'dark'} onThemeToggle={toggleTheme} textSize={textSize} onTextSizeChange={changeTextSize} /> : <Suspense fallback={<p role="status" {...stylex.props(ui.muted)}>Loading browser…</p>}><BrowserPanel initialTargetId={browserTarget} sessionId={browserTarget ? chat.sessionId : undefined} request={chat.request} notify={notify} onClose={closePanel} onStart={prompt => { closePanel(); if (!browserTarget) newChat(); setDraft(prompt); }} /></Suspense>}</Dialog>}</AnimatePresence>
     <AnimatePresence>{menuSession && menuSession.id === chat.sessionId && !chat.isOpening && !chat.authError && <Dialog key={menuSession.id} title={SESSION_MENU_TITLE} onClose={() => setMenuSession(undefined)}><SessionMenu sessionId={menuSession.id} title={menuSession.title} onClose={() => setMenuSession(undefined)} notify={notify} /></Dialog>}</AnimatePresence>
     <AnimatePresence>{deleteTarget && <Dialog key={deleteTarget.id} title="Delete conversation?" onClose={() => { if (!isDeleting) setDeleteTarget(undefined); }}><div {...stylex.props(styles.dialogHeader)}><h2 {...stylex.props(ui.title)}>Delete conversation?</h2><CloseButton onClick={() => { if (!isDeleting) setDeleteTarget(undefined); }} /></div><p {...stylex.props(styles.deleteTitle)}>{deleteTarget.title}</p><p {...stylex.props(ui.muted)}>This also deletes the original conversation and its files in Aside. This cannot be undone.</p><div {...stylex.props(styles.dialogActions)}><button {...stylex.props(ui.button)} disabled={isDeleting} autoFocus onClick={() => setDeleteTarget(undefined)}>Cancel</button><button {...stylex.props(ui.button, ui.danger)} disabled={isDeleting} onClick={async () => { setDeleting(true); try { if (await chat.deleteSession(deleteTarget.id)) setDeleteTarget(undefined); } finally { setDeleting(false); } }}>{isDeleting ? 'Deleting…' : 'Delete'}</button></div></Dialog>}</AnimatePresence>
     <AnimatePresence>{zoom && <Dialog key={zoom} title="Image" isWide onClose={() => setZoom(undefined)}><div {...stylex.props(styles.zoomHeader)}><CloseButton onClick={() => setZoom(undefined)} /></div><img src={zoom} alt="Expanded attachment" {...stylex.props(styles.zoomImage)} /></Dialog>}</AnimatePresence>
