@@ -1013,7 +1013,6 @@ variable                              role
 --border --control-border --hover     dividers / input borders / hover fill
 --primary-hover --danger --selection  primary button hover / destructive / text selection
 --status-ok --status-off              connection dot
---glass --glass-border --glass-shadow floating header and controls (default: opaque --canvas)
 --syntax-keyword --syntax-string --syntax-number --syntax-title   code + chart colors
 --font-body                           response text font (also set from Settings)
 --font-code --code-line-height        code blocks (D2Coding)

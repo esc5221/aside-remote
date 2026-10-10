@@ -194,7 +194,6 @@ function useMediaQuery(query: string) {
 }
 
 export const styles = stylex.create({
-  glass: { backgroundColor: tokens.glass, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.glassBorder, backdropFilter: 'blur(20px) saturate(160%)', boxShadow: tokens.glassShadow },
   iconButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: 44, height: 44, borderRadius: '50%', borderWidth: 0, padding: 0, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text },
   outlined: { borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border },
   dialog: { position: 'fixed', inset: 0, width: '100%', height: '100dvh', maxWidth: 'none', maxHeight: 'none', margin: 0, padding: 0, borderWidth: 0, overflow: 'clip', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', '@media (max-width: 700px)': { alignItems: 'flex-end' } },

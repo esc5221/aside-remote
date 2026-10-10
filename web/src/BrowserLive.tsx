@@ -159,7 +159,7 @@ const styles = stylex.create({
   top: { display: 'flex', alignItems: 'center', minWidth: 0, minHeight: 40, flexShrink: 0, padding: '2px 6px 2px 10px', backgroundColor: tokens.canvas },
   handle: { display: 'flex', flex: 1, alignItems: 'center', alignSelf: 'stretch', minWidth: 0, padding: '0 6px 0 0', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, touchAction: 'none', cursor: { default: 'grab', ':active': 'grabbing' } },
   control: { display: 'grid', placeItems: 'center', width: 32, height: 36, flexShrink: 0, padding: 0, borderWidth: 0, borderRadius: 10, color: tokens.text, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, textDecoration: 'none' },
-  title: { flex: 1, minWidth: 0, fontSize: '0.625rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 },
+  title: { flex: 1, minWidth: 0, fontSize: '0.6875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 },
   frame: { display: 'flex', width: '100%', minHeight: 0, aspectRatio: '4 / 3', padding: 0, borderWidth: 0, overflow: 'hidden', backgroundColor: tokens.surface, touchAction: 'none', cursor: 'grab' },
   image: { width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'top' },
   placeholder: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', fontSize: '0.6875rem', color: tokens.muted },

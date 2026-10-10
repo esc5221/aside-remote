@@ -87,7 +87,7 @@ export function ModelPicker({ selection, disabled, isRunning }: {
   const open = () => { selection.reload(); setOpen(true); };
 
   return <>
-    <button type="button" aria-label={'Choose model, ' + name + (thinkingLabel ? ', ' + thinkingLabel : '')} aria-haspopup="dialog" aria-expanded={isOpen} disabled={disabled || selection.isUpdating} {...stylex.props(styles.trigger, ui.glass)} onPointerDown={event => { if (event.pointerType === 'touch') { event.preventDefault(); if (!disabled && !selection.isUpdating) open(); } }} onClick={open}>
+    <button type="button" aria-label={'Choose model, ' + name + (thinkingLabel ? ', ' + thinkingLabel : '')} aria-haspopup="dialog" aria-expanded={isOpen} disabled={disabled || selection.isUpdating} {...stylex.props(styles.trigger)} onPointerDown={event => { if (event.pointerType === 'touch') event.preventDefault(); }} onClick={open}>
       <span {...stylex.props(styles.triggerText)}><span {...stylex.props(styles.name)}>{name}</span>{thinkingLabel && <span {...stylex.props(styles.effort)}>{thinkingLabel}</span>}</span><ChevronDown size={13} strokeWidth={ICON_STROKE} aria-hidden="true" />
     </button>
     <AnimatePresence>{isOpen && <Dialog key="models" title="Models" onClose={close}>
@@ -121,10 +121,10 @@ function sortModels(models: AvailableModel[]) {
 }
 
 const styles = stylex.create({
-  trigger: { display: 'flex', alignItems: 'center', gap: 6, minHeight: 32, maxWidth: 190, minWidth: 0, padding: '0 10px', borderWidth: 0, borderRadius: 20, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.muted, fontSize: '.6875rem', pointerEvents: 'auto', '@media (max-width: 375px)': { maxWidth: 172 } },
+  trigger: { display: 'flex', alignItems: 'center', gap: 6, minHeight: 38, maxWidth: 190, minWidth: 0, padding: '0 12px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, borderRadius: 24, backgroundColor: { default: tokens.canvas, ':hover': tokens.hover }, color: tokens.text, fontSize: '0.8125rem', fontWeight: 500, pointerEvents: 'auto', '@media (max-width: 375px)': { maxWidth: 172 } },
   name: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 },
   triggerText: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
-  effort: { fontSize: '0.625rem' },
+  effort: { fontSize: '0.75rem', color: tokens.muted },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   note: { color: tokens.muted, fontSize: '0.8125rem', lineHeight: 1.5, margin: '0 0 14px' },
   retry: { borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, padding: '8px 4px', fontSize: 'inherit' },

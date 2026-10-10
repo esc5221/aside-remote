@@ -219,9 +219,9 @@ const markdownComponents: Components = {
 const styles = stylex.create({
   messages: { height: '100%', width: '100%', minWidth: 0 },
   scroller: { overflowX: 'hidden', overflowAnchor: 'none', overscrollBehaviorY: 'contain', scrollbarWidth: 'thin' },
-  row: { display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: 736, margin: '0 auto', padding: '0 max(20px, env(safe-area-inset-right)) 14px max(20px, env(safe-area-inset-left))', alignItems: 'stretch' },
+  row: { display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: 736, margin: '0 auto', padding: '0 max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left))', alignItems: 'stretch' },
   activityRow: { paddingBottom: 4 },
-  firstRow: { paddingTop: 'calc(var(--header-height) + 12px)' },
+  firstRow: { paddingTop: 'calc(var(--header-height) + 22px)' },
   bottomSpace: { height: 'var(--composer-height)' },
   message: { minWidth: 0, maxWidth: '100%', flexShrink: 0 },
   user: { alignSelf: 'flex-end', backgroundColor: tokens.bubble, borderRadius: 24, padding: '12px 18px', maxWidth: '88%', fontSize: '1rem', lineHeight: 1.55 },
