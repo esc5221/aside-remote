@@ -13,7 +13,9 @@ const ZOOM_STEP = 1.5;
 const KEYBOARD_PAN_STEP = 48;
 const PERCENT_SCALE = 100;
 
-export function BrowserPreview({ src, title, url, onClose }: { src: string; title: string; url?: string; onClose: () => void }) {
+export function ImagePreview({ src, title = 'Image', url, kind = 'image', onClose }: { src: string; title?: string; url?: string; kind?: 'image' | 'browser'; onClose: () => void }) {
+  const isBrowser = kind === 'browser';
+  const dialogTitle = isBrowser ? 'Browser preview' : 'Image';
   const viewportRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const pointersRef = useRef<{ id: number; x: number; y: number }[]>([]);
@@ -36,10 +38,10 @@ export function BrowserPreview({ src, title, url, onClose }: { src: string; titl
     return () => { observer.disconnect(); viewport.removeEventListener('wheel', wheel); };
   }, [scale, x, y]);
 
-  return <Dialog title="Browser preview" isFullScreen onClose={onClose}>
+  return <Dialog title={dialogTitle} isFullScreen onClose={onClose}>
     <section {...stylex.props(styles.viewer)}>
-      <header {...stylex.props(styles.header)}><div {...stylex.props(styles.identity)}><h2 {...stylex.props(styles.title)}>{title}</h2>{url && <a href={url} target="_blank" rel="noopener noreferrer external" aria-label={OPEN_IN_BROWSER_LABEL} {...stylex.props(styles.url)}>{url}</a>}</div><IconButton label="Close browser preview" onClick={onClose}><X size={22} strokeWidth={ICON_STROKE} /></IconButton></header>
-      <div ref={viewportRef} role="region" aria-label="Zoomable browser view" aria-description="Pinch to zoom, drag to move. Use plus and minus to zoom, arrow keys to move, or zero to reset." tabIndex={0} {...stylex.props(styles.viewport)}
+      <header {...stylex.props(styles.header)}><div {...stylex.props(styles.identity)}><h2 {...stylex.props(styles.title)}>{title}</h2>{url && <a href={url} target="_blank" rel="noopener noreferrer external" aria-label={OPEN_IN_BROWSER_LABEL} {...stylex.props(styles.url)}>{url}</a>}</div><IconButton label={`Close ${dialogTitle.toLowerCase()}`} onClick={onClose}><X size={22} strokeWidth={ICON_STROKE} /></IconButton></header>
+      <div ref={viewportRef} role="region" aria-label={isBrowser ? 'Zoomable browser view' : 'Zoomable image'} aria-description="Pinch to zoom, drag to move. Use plus and minus to zoom, arrow keys to move, or zero to reset." tabIndex={0} {...stylex.props(styles.viewport)}
         onPointerDown={event => {
           if (event.button !== 0 || pointersRef.current.length >= 2) return;
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -64,7 +66,7 @@ export function BrowserPreview({ src, title, url, onClose }: { src: string; titl
           else return;
           event.preventDefault(); event.stopPropagation();
         }}>
-        <motion.img ref={imageRef} src={src} alt={`Current view of ${title}`} draggable={false} {...stylex.props(styles.image)} style={{ x, y, scale }} onLoad={() => applyTransform(scale.get(), x.get(), y.get())} />
+        <motion.img ref={imageRef} src={src} alt={isBrowser ? `Current view of ${title}` : 'Expanded attachment'} draggable={false} {...stylex.props(styles.image)} style={{ x, y, scale }} onLoad={() => applyTransform(scale.get(), x.get(), y.get())} />
       </div>
       <footer {...stylex.props(styles.controls)}><IconButton label="Zoom out" disabled={zoom === MIN_ZOOM * PERCENT_SCALE} onClick={() => zoomAt(scale.get() / ZOOM_STEP)}><Minus size={22} strokeWidth={ICON_STROKE} /></IconButton><button type="button" aria-label={`Reset zoom, ${zoom}%`} {...stylex.props(styles.reset)} onClick={() => applyTransform(MIN_ZOOM, 0, 0)}>{zoom}%</button><IconButton label="Zoom in" disabled={zoom === MAX_ZOOM * PERCENT_SCALE} onClick={() => zoomAt(scale.get() * ZOOM_STEP)}><Plus size={22} strokeWidth={ICON_STROKE} /></IconButton></footer>
     </section>

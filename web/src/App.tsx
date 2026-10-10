@@ -11,6 +11,7 @@ import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
 import { BrowserLive } from './BrowserLive';
+import { ImagePreview } from './ImagePreview';
 import { Settings } from './Settings';
 import { RenameConversation, SessionMenu, type SessionMenuTarget } from './SessionMenu';
 import { applyTheme, THEME_STORAGE_KEY, applyTextSize, loadTextSize, TEXT_SIZE_STORAGE_KEY, type Theme } from './theme';
@@ -233,7 +234,7 @@ export function App() {
     {menuSession && !chat.authError && <SessionMenu key={menuSession.id} target={menuSession} chat={chat} onClose={() => setMenuSession(undefined)} notify={notify} onRename={setRenameTarget} onDelete={session => { setDrawer(false); setDeleteTarget(session); }} />}
     <AnimatePresence>{renameTarget && <Dialog key={renameTarget.id} title="Rename conversation" onClose={() => setRenameTarget(undefined)}><RenameConversation session={renameTarget} chat={chat} onClose={() => setRenameTarget(undefined)} /></Dialog>}</AnimatePresence>
     <AnimatePresence>{deleteTarget && <Dialog key={deleteTarget.id} title="Delete conversation?" onClose={() => { if (!isDeleting) setDeleteTarget(undefined); }}><div {...stylex.props(styles.dialogHeader)}><h2 {...stylex.props(ui.title)}>Delete conversation?</h2><CloseButton onClick={() => { if (!isDeleting) setDeleteTarget(undefined); }} /></div><p {...stylex.props(styles.deleteTitle)}>{deleteTarget.title}</p><p {...stylex.props(ui.muted)}>This also deletes the original conversation and its files in Aside. This cannot be undone.</p><div {...stylex.props(styles.dialogActions)}><button {...stylex.props(ui.button)} disabled={isDeleting} autoFocus onClick={() => setDeleteTarget(undefined)}>Cancel</button><button {...stylex.props(ui.button, ui.danger)} disabled={isDeleting} onClick={async () => { setDeleting(true); try { if (await chat.deleteSession(deleteTarget.id)) setDeleteTarget(undefined); } finally { setDeleting(false); } }}>{isDeleting ? 'Deleting…' : 'Delete'}</button></div></Dialog>}</AnimatePresence>
-    <AnimatePresence>{zoom && <Dialog key={zoom} title="Image" isWide onClose={() => setZoom(undefined)}><div {...stylex.props(styles.zoomHeader)}><CloseButton onClick={() => setZoom(undefined)} /></div><img src={zoom} alt="Expanded attachment" {...stylex.props(styles.zoomImage)} /></Dialog>}</AnimatePresence>
+    <AnimatePresence>{zoom && <ImagePreview key={zoom} src={zoom} onClose={() => setZoom(undefined)} />}</AnimatePresence>
     <ToastStack toasts={toasts} onDismiss={dismissToast} />
   </div></MotionConfig>;
 }
@@ -328,8 +329,6 @@ const styles = stylex.create({
   dialogHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   deleteTitle: { fontSize: '1rem', fontWeight: 550, lineHeight: 1.5, overflowWrap: 'anywhere' },
   dialogActions: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 22 },
-  zoomHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
-  zoomImage: { display: 'block', maxWidth: '100%', maxHeight: '70dvh', margin: '0 auto', objectFit: 'contain', borderRadius: 12 },
   toasts: { position: 'fixed', top: 'calc(env(safe-area-inset-top) + 72px)', right: 16, left: 16, bottom: 'auto', margin: 0, width: 'auto', height: 'auto', borderWidth: 0, padding: 0, overflow: 'visible', backgroundColor: 'transparent', display: 'grid', justifyItems: 'center', zIndex: 10, pointerEvents: 'none' },
   toast: { gridArea: '1 / 1', transformOrigin: 'top center', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', minHeight: 48, width: '100%', maxWidth: 440, boxSizing: 'border-box', backgroundColor: tokens.text, color: tokens.canvas, borderRadius: 18, boxShadow: '0 4px 20px rgb(0 0 0 / .14)', pointerEvents: 'none' },
   toastMessage: { flex: 1, fontSize: '0.8125rem', lineHeight: 1.45, overflowWrap: 'anywhere', minWidth: 0, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden' },

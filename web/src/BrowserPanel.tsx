@@ -18,7 +18,7 @@ import { focusDialogSurface } from "./ui"
 import { useAutoRefresh } from "./useAutoRefresh"
 import type { BrowserTab } from "./types"
 import { getWebsiteUrl, isTabResponse, OPEN_IN_BROWSER_LABEL } from "./browser"
-import { BrowserPreview } from "./BrowserPreview"
+import { ImagePreview } from "./ImagePreview"
 
 const TAB_REFRESH_INTERVAL_MS = 2_000
 const PREVIEW_REFRESH_INTERVAL_MS = 1_000
@@ -361,7 +361,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           </div>
         </div>
       )}
-      <AnimatePresence>{isPreviewExpanded && previewUrl && selectedTab && !isSelectedTabAsleep && !isSelectedTabMissing && <BrowserPreview key={selectedTab.targetId} src={previewUrl} title={selectedTab.title || "Browser"} url={websiteUrl} onClose={() => setPreviewExpanded(false)} />}</AnimatePresence>
+      <AnimatePresence>{isPreviewExpanded && previewUrl && selectedTab && !isSelectedTabAsleep && !isSelectedTabMissing && <ImagePreview kind="browser" key={selectedTab.targetId} src={previewUrl} title={selectedTab.title || "Browser"} url={websiteUrl} onClose={() => setPreviewExpanded(false)} />}</AnimatePresence>
     </section>
   )
 }
