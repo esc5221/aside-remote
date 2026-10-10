@@ -19,12 +19,11 @@
   html {
     --composer-height: 118px;
     --header-height: calc(68px + env(safe-area-inset-top));
-    --glass: rgb(247 247 247 / .78); --glass-border: rgb(0 0 0 / .08);
-    --glass-shadow: inset 0 1px 1px rgb(255 255 255 / .7), 0 4px 20px rgb(0 0 0 / .06);
+    --glass: var(--canvas); --glass-border: var(--border); --glass-shadow: none;
     --canvas: #ffffff; --surface: #f7f7f7; --bubble: #f1f1f1; --text: #171717;
     --muted: #666666; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
-    --primary: #a34dff; --primary-foreground: #ffffff; --primary-hover: color-mix(in srgb, var(--primary), black 12%);
-    --control-border: #dcdcdc; --selection: color-mix(in srgb, var(--primary) 20%, var(--canvas));
+    --primary: var(--text); --primary-foreground: var(--canvas);
+    --control-border: #dcdcdc; --primary-hover: #333333; --selection: #d8eaff;
     --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #855b00; --syntax-title: #205cc9;
     --status-off: #b0b0b0; --status-ok: #2f7b49;
     --font-code: "D2Coding", monospace; --code-line-height: 1.4;
@@ -32,11 +31,9 @@
     color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%; font-size: var(--text-size, 100%);
   }
   html[data-theme="dark"] {
-    --canvas: #000000; --surface: #141414; --bubble: #181818; --text: #f3f3f3;
-    --muted: #999999; --border: #343434; --hover: #303030; --danger: #ff9b91;
-    --control-border: #414141;
-    --glass: rgb(24 24 24 / .68); --glass-border: rgb(255 255 255 / .12);
-    --glass-shadow: inset 0 1px 1px rgb(255 255 255 / .1), 0 4px 20px rgb(0 0 0 / .16);
+    --canvas: #212121; --surface: #2f2f2f; --bubble: #303030; --text: #f3f3f3;
+    --muted: #b4b4b4; --border: #414141; --hover: #3b3b3b; --danger: #ff9b91;
+    --control-border: #4b4b4b; --primary-hover: #d9d9d9; --selection: #34516e;
     --syntax-keyword: #dda5df; --syntax-string: #a7d6a7; --syntax-number: #e5c07b; --syntax-title: #9ec4ff;
     --status-off: #6f6f6f; --status-ok: #4fa96a;
     color-scheme: dark;
@@ -78,13 +75,13 @@
   .markdown { font-family: var(--font-body); font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
   .markdown > :first-child { margin-top: 0; }
   .markdown > :last-child { margin-bottom: 0; }
-  .markdown p { margin: 0 0 12px; white-space: pre-wrap; }
-  .markdown h1, .markdown h2, .markdown h3 { line-height: 1.35; margin: 20px 0 10px; font-weight: 650; }
+  .markdown p { margin: 0 0 16px; white-space: pre-wrap; }
+  .markdown h1, .markdown h2, .markdown h3 { line-height: 1.35; margin: 26px 0 12px; font-weight: 650; }
   .markdown h1 { font-size: 1.5rem; } .markdown h2 { font-size: 1.3125rem; } .markdown h3 { font-size: 1.125rem; }
-  .markdown ul, .markdown ol { padding-left: 25px; margin: 8px 0 12px; }
-  .markdown li { margin: 4px 0; }
-  .markdown blockquote { border-left: 3px solid var(--border); margin: 12px 0; padding-left: 16px; color: var(--muted); }
-  .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+  .markdown ul, .markdown ol { padding-left: 25px; margin: 12px 0 20px; }
+  .markdown li { margin: 5px 0; }
+  .markdown blockquote { border-left: 3px solid var(--border); margin: 16px 0; padding-left: 16px; color: var(--muted); }
+  .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
   .markdown code { font-size: .9em; background: var(--bubble); padding: 2px 5px; border-radius: 5px; white-space: break-spaces; overflow-wrap: anywhere; }
   .markdown pre { margin: 0; overflow-x: auto; padding: 12px 16px; max-width: 100%; overscroll-behavior-x: none; touch-action: pan-x pan-y; font-size: 0.8125rem; line-height: var(--code-line-height); tab-size: 4; }
   .markdown pre *, .markdown [aria-label="Response table"], .markdown table, .markdown table * { touch-action: pan-x pan-y; }

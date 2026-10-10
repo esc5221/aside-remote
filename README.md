@@ -997,7 +997,7 @@ Every color is a CSS variable on `html`; override those rather than component cl
 
 ```css
 /* ~/.aside-remote/theme.css */
-html { --text: #1b2a22; --selection: #cdebd9; }                 /* every preset */
+html { --primary: #a34dff; --primary-foreground: #fff; }         /* every preset */
 html[data-theme="dark"] { --canvas: #101418; --surface: #161b21; } /* only the dark preset */
 ```
 
@@ -1008,10 +1008,12 @@ palette so embedded visuals and native controls follow.
 ```
 variable                              role
 --canvas --surface --bubble           page / panels and menus / user bubble, inline code
---text --muted                        primary / secondary text (--text is also the primary button)
+--text --muted                        primary / secondary text
+--primary --primary-foreground        accent: send/primary buttons, pins, checks (default: --text / --canvas)
 --border --control-border --hover     dividers / input borders / hover fill
 --primary-hover --danger --selection  primary button hover / destructive / text selection
 --status-ok --status-off              connection dot
+--glass --glass-border --glass-shadow floating header and controls (default: opaque --canvas)
 --syntax-keyword --syntax-string --syntax-number --syntax-title   code + chart colors
 --font-body                           response text font (also set from Settings)
 --font-code --code-line-height        code blocks (D2Coding)
