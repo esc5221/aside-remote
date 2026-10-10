@@ -8,6 +8,8 @@ import { tokens } from './tokens.stylex';
 export const ICON_STROKE = 1.8;
 export const SESSION_MENU_LABEL = 'Session options';
 export const SESSION_MENU_TITLE = 'Session';
+const DIALOG_EASE = [0.22, 1, 0.36, 1] as const;
+const SHEET_CLOSED_Y = '100%';
 
 export function IconButton({ label, children, isOutlined = false, ...props }: HTMLMotionProps<'button'> & { label: string; children: ReactNode; isOutlined?: boolean }) {
   const shouldReduceMotion = useReducedMotion();
@@ -22,17 +24,15 @@ export function Dialog({ title, children, onClose, isWide = false }: { title: st
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeRequestedRef = useRef(false);
+  const isOpenRef = useRef(false);
   const dragControls = useDragControls();
   const [isPresent, safeToRemove] = usePresence();
   const shouldReduceMotion = useReducedMotion();
   const isMobile = useMediaQuery('(max-width: 700px)');
-  const sheetOffset = Math.max(480, window.innerHeight);
-  useLayoutEffect(() => { if (isPresent) closeRequestedRef.current = false; }, [isPresent]);
-  useEffect(() => {
-    if (isPresent || !safeToRemove) return;
-    const timer = window.setTimeout(safeToRemove, shouldReduceMotion ? 120 : isMobile ? 420 : 220);
-    return () => window.clearTimeout(timer);
-  }, [isMobile, isPresent, safeToRemove, shouldReduceMotion]);
+  useLayoutEffect(() => {
+    isOpenRef.current = false;
+    if (isPresent) closeRequestedRef.current = false;
+  }, [isPresent]);
   useLayoutEffect(() => {
     const dialog = ref.current;
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -59,12 +59,12 @@ export function Dialog({ title, children, onClose, isWide = false }: { title: st
   const sheetMotion = shouldReduceMotion
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: .12 } }
     : isMobile
-      ? { initial: { y: sheetOffset, opacity: .98 }, animate: { y: 0, opacity: 1 }, exit: { y: sheetOffset, opacity: .98 }, transition: { type: 'spring' as const, stiffness: 390, damping: 36, mass: .9 } }
-      : { initial: { opacity: 0, scale: .96, y: 10 }, animate: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: .97, y: 8 }, transition: { duration: .2, ease: [0.22, 1, 0.36, 1] as const } };
+      ? { initial: { y: SHEET_CLOSED_Y, opacity: .98 }, animate: { y: 0, opacity: 1 }, exit: { y: SHEET_CLOSED_Y, opacity: .98 }, transition: { type: 'tween' as const, duration: .32, ease: DIALOG_EASE } }
+      : { initial: { opacity: 0, scale: .96, y: 10 }, animate: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: .97, y: 8 }, transition: { duration: .2, ease: DIALOG_EASE } };
   return <motion.dialog ref={ref} tabIndex={-1} data-motion-overlay="" style={{ pointerEvents: isPresent ? 'auto' : 'none' }} {...stylex.props(styles.dialog)} aria-label={title} onKeyDown={trapDialogFocus} onCancel={event => { event.preventDefault(); requestClose(); }}>
     <motion.button type="button" tabIndex={-1} data-overlay-backdrop="" aria-label={`Close ${title}`} {...stylex.props(styles.backdrop)} initial={{ opacity: 0 }} animate={{ opacity: isPresent ? 1 : 0 }} transition={{ duration: shouldReduceMotion ? .1 : .2 }} onClick={requestClose} />
-    <motion.div data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} drag={!shouldReduceMotion && isMobile ? 'y' : false} dragControls={dragControls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: .5 }} dragMomentum={false} onDragEnd={finishDrag}>
-      <div {...stylex.props(styles.dragHandle)} aria-hidden="true" onPointerDown={event => dragControls.start(event)}><span {...stylex.props(styles.dragHandleBar)} /></div>
+    <motion.div data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} drag={!shouldReduceMotion && isMobile ? 'y' : false} dragControls={dragControls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: .5 }} dragMomentum={false} onDragEnd={finishDrag}>
+      <div {...stylex.props(styles.dragHandle)} aria-hidden="true" onPointerDown={event => { if (isOpenRef.current) dragControls.start(event); }}><span {...stylex.props(styles.dragHandleBar)} /></div>
       <div {...stylex.props(styles.dialogBody)}>{children}</div>
     </motion.div>
   </motion.dialog>;
