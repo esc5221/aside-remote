@@ -271,7 +271,7 @@ export const useChat = (): UseChat => {
 
   const pushToast = useCallback(
     (message: string, tone: Toast["tone"] = "error") => {
-      const toast = { id: createRequestId(), message, tone }
+      const toast = { id: createRequestId(), createdAt: Date.now(), message, tone }
       setToasts((current) => [...current, toast])
     },
     [],

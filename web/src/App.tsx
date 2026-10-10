@@ -17,6 +17,10 @@ import { ICON_STROKE, SESSION_MENU_LABEL, SESSION_MENU_TITLE, BrowserIcon, Close
 const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })));
 const Messages = lazy(() => import('./Messages').then(module => ({ default: module.Messages })));
 const ZOOM_GESTURE_EVENTS = ['gesturestart', 'gesturechange'];
+const TOAST_STACK_LIMIT = 3;
+const TOAST_DURATION = 3_000;
+const TOAST_ERROR_DURATION = 6_000;
+const TOAST_HIDDEN = { opacity: 0, y: -100, scale: .96 };
 
 export function App() {
   const chat = useChat();
@@ -35,10 +39,10 @@ export function App() {
   const scrollRef = useRef<HTMLDivElement>(null); const contentRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true); const [canJump, setCanJump] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const toasts = [...chat.toasts, ...localToasts].slice(-3);
+  const toasts = [...chat.toasts, ...localToasts].sort((first, second) => first.createdAt - second.createdAt);
 
   function notify(message: string, kind: 'success' | 'error' = 'success') {
-    const id = crypto.randomUUID(); setLocalToasts(current => [...current, { id, message, tone: kind }]);
+    const id = crypto.randomUUID(); setLocalToasts(current => [...current, { id, createdAt: Date.now(), message, tone: kind }]);
   }
   const dismissToast = useCallback((id: string) => { chat.dismissToast(id); setLocalToasts(current => current.filter(toast => toast.id !== id)); }, [chat.dismissToast]);
   function changeTextSize(size: number) {
@@ -123,7 +127,8 @@ export function App() {
 function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const [isPaused, setPaused] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
+  const visibleToasts = toasts.slice(-TOAST_STACK_LIMIT);
   const [portalTarget, setPortalTarget] = useState<HTMLElement>(() => document.body);
   const countRef = useRef(toasts.length); countRef.current = toasts.length;
   useLayoutEffect(() => {
@@ -138,20 +143,28 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: st
     if (!stack || !('showPopover' in stack)) return;
     if (toasts.length && !stack.matches(':popover-open')) stack.showPopover();
   }, [toasts, portalTarget]);
-  useEffect(() => {
-    if (isPaused) return;
-    const timers = toasts.filter(toast => toast.tone === 'success').map(toast => window.setTimeout(() => onDismiss(toast.id), 10_000));
-    return () => timers.forEach(window.clearTimeout);
-  }, [toasts, onDismiss, isPaused]);
-  function dismissNotification(id: string, button: HTMLButtonElement) {
-    if (document.activeElement === button) {
+  const dismissNotification = useCallback((id: string) => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement.closest('[data-toast-id]')?.getAttribute('data-toast-id') === id) {
       const previous = returnFocusRef.current;
       if (previous?.isConnected && !previous.matches(':disabled') && previous.getClientRects().length) previous.focus({ preventScroll: true });
-      else { const dialog = button.closest('dialog'); if (dialog) focusDialogSurface(dialog); else document.querySelector<HTMLButtonElement>('button[aria-label="New chat"]')?.focus({ preventScroll: true }); }
+      else { const dialog = activeElement.closest('dialog'); if (dialog) focusDialogSurface(dialog); else document.querySelector<HTMLButtonElement>('button[aria-label="New chat"]')?.focus({ preventScroll: true }); }
     }
     onDismiss(id);
-  }
-  return createPortal(<div ref={ref} popover="manual" onMouseEnter={() => setPaused(true)} onMouseLeave={event => setPaused(event.currentTarget.contains(document.activeElement))} onFocusCapture={event => { setPaused(true); if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget instanceof HTMLElement) returnFocusRef.current = event.relatedTarget; }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(event.currentTarget.matches(':hover')); }} {...stylex.props(styles.toasts)}><AnimatePresence initial={false} onExitComplete={() => { const stack = ref.current; if (stack && countRef.current === 0 && stack.matches(':popover-open')) stack.hidePopover(); }}>{toasts.map(toast => <motion.div layout key={toast.id} {...stylex.props(styles.toast)} initial={{ opacity: 0, y: -12, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .96 }} transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}><span aria-hidden="true" {...stylex.props(styles.toastIcon)}>{toast.tone === 'error' ? <CircleAlert size={18} strokeWidth={ICON_STROKE} /> : <Check size={18} strokeWidth={ICON_STROKE} />}</span><span role={toast.tone === 'error' ? 'alert' : 'status'} {...stylex.props(styles.toastMessage)}>{toast.message}</span><motion.button type="button" {...stylex.props(styles.toastClose)} whileTap={{ scale: .86 }} aria-label="Dismiss notification" onClick={event => dismissNotification(toast.id, event.currentTarget)}><X size={16} /></motion.button></motion.div>)}</AnimatePresence></div>, portalTarget);
+  }, [onDismiss]);
+  useEffect(() => {
+    const overflowCount = Math.max(0, toasts.length - TOAST_STACK_LIMIT);
+    toasts.slice(0, overflowCount).forEach(toast => dismissNotification(toast.id));
+    const timers = toasts.slice(overflowCount).map(toast => {
+      const duration = toast.tone === 'error' ? TOAST_ERROR_DURATION : TOAST_DURATION;
+      return window.setTimeout(() => dismissNotification(toast.id), Math.max(0, toast.createdAt + duration - Date.now()));
+    });
+    return () => timers.forEach(window.clearTimeout);
+  }, [toasts, dismissNotification]);
+  return createPortal(<div ref={ref} popover="manual" onFocusCapture={event => { if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget instanceof HTMLElement) returnFocusRef.current = event.relatedTarget; }} {...stylex.props(styles.toasts)}><AnimatePresence initial={false} onExitComplete={() => { const stack = ref.current; if (stack && countRef.current === 0 && stack.matches(':popover-open')) stack.hidePopover(); }}>{visibleToasts.map((toast, index) => {
+    const depth = visibleToasts.length - index - 1;
+    return <motion.div key={toast.id} data-toast-id={toast.id} {...stylex.props(styles.toast)} style={{ zIndex: index + 1 }} initial={shouldReduceMotion ? { opacity: 0 } : TOAST_HIDDEN} animate={{ opacity: 1, y: depth * 8, scale: 1 - depth * .04 }} exit={shouldReduceMotion ? { opacity: 0 } : TOAST_HIDDEN} transition={{ type: 'tween', duration: shouldReduceMotion ? .12 : .28, ease: [0.22, 1, 0.36, 1] }}><span aria-hidden="true" {...stylex.props(styles.toastIcon)}>{toast.tone === 'error' ? <CircleAlert size={18} strokeWidth={ICON_STROKE} /> : <Check size={18} strokeWidth={ICON_STROKE} />}</span><span role={toast.tone === 'error' ? 'alert' : 'status'} {...stylex.props(styles.toastMessage)}>{toast.message}</span><motion.button type="button" {...stylex.props(styles.toastClose)} style={{ pointerEvents: depth ? 'none' : 'auto' }} tabIndex={depth ? -1 : 0} whileTap={{ scale: .86 }} aria-label="Dismiss notification" onClick={() => dismissNotification(toast.id)}><X size={16} /></motion.button></motion.div>;
+  })}</AnimatePresence></div>, portalTarget);
 }
 
 function Drawer({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
@@ -198,9 +211,9 @@ const styles = stylex.create({
   dialogActions: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 22 },
   zoomHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   zoomImage: { display: 'block', maxWidth: '100%', maxHeight: '70dvh', margin: '0 auto', objectFit: 'contain', borderRadius: 12 },
-  toasts: { position: 'fixed', top: 'calc(env(safe-area-inset-top) + 72px)', right: 16, left: 16, bottom: 'auto', margin: 0, width: 'auto', height: 'auto', borderWidth: 0, padding: 0, maxHeight: '40dvh', overflowY: 'auto', backgroundColor: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 10, pointerEvents: 'none' },
-  toast: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', minHeight: 48, width: 'fit-content', maxWidth: 'min(440px, 100%)', boxSizing: 'border-box', backgroundColor: tokens.text, color: tokens.canvas, borderRadius: 18, boxShadow: '0 4px 20px rgb(0 0 0 / .14)', pointerEvents: 'none' },
-  toastMessage: { fontSize: '0.8125rem', lineHeight: 1.45, overflowWrap: 'anywhere', minWidth: 0 },
+  toasts: { position: 'fixed', top: 'calc(env(safe-area-inset-top) + 72px)', right: 16, left: 16, bottom: 'auto', margin: 0, width: 'auto', height: 'auto', borderWidth: 0, padding: 0, overflow: 'visible', backgroundColor: 'transparent', display: 'grid', justifyItems: 'center', zIndex: 10, pointerEvents: 'none' },
+  toast: { gridArea: '1 / 1', transformOrigin: 'top center', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', minHeight: 48, width: '100%', maxWidth: 440, boxSizing: 'border-box', backgroundColor: tokens.text, color: tokens.canvas, borderRadius: 18, boxShadow: '0 4px 20px rgb(0 0 0 / .14)', pointerEvents: 'none' },
+  toastMessage: { flex: 1, fontSize: '0.8125rem', lineHeight: 1.45, overflowWrap: 'anywhere', minWidth: 0, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden' },
   toastIcon: { display: 'flex', flexShrink: 0 },
   toastClose: { backgroundColor: 'transparent', color: 'inherit', borderWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, pointerEvents: 'auto' },
 });

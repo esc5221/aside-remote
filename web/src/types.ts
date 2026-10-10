@@ -93,6 +93,7 @@ export type UploadAttachment = {
 
 export type Toast = {
   id: string
+  createdAt: number
   message: string
   tone: "error" | "success" | "info"
 }
