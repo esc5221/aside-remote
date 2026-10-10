@@ -204,10 +204,11 @@ export function App() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => listRef.current?.scrollToIndex(latestMessage));
     };
+    const onWindowFocus = () => { if (matchMedia('(pointer: fine)').matches) returnToLatest(); };
     document.addEventListener('visibilitychange', returnToLatest);
-    window.addEventListener('focus', returnToLatest);
+    window.addEventListener('focus', onWindowFocus);
     window.addEventListener('pageshow', returnToLatest);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener('visibilitychange', returnToLatest); window.removeEventListener('focus', returnToLatest); window.removeEventListener('pageshow', returnToLatest); };
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('visibilitychange', returnToLatest); window.removeEventListener('focus', onWindowFocus); window.removeEventListener('pageshow', returnToLatest); };
   }, []);
 
   return <MotionConfig reducedMotion="user"><div ref={viewportRef} {...stylex.props(styles.app)}><DialogBackdropReset />

@@ -23,7 +23,7 @@ const highlightPlugins = [rehypeHighlight];
 const attachmentPrompt = /^\[첨부 이미지\]\n((?:- .*\n)+)위 이미지를[^\n]*(?:\n\n?)?/;
 const initialLocation = { index: 'LAST', align: 'end' } as const;
 const PREVIEW_HEIGHT = 'clamp(240px, 62svh, 560px)';
-const messageListComponents = { Scroller: forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function ChatScroller({ style, ...props }, ref) {
+const messageListComponents = { Footer: function ChatBottomSpace() { return <div aria-hidden="true" {...stylex.props(styles.bottomSpace)} />; }, Scroller: forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function ChatScroller({ style, ...props }, ref) {
   return <div {...props} ref={ref} id="chatScroll" role="region" aria-label="Conversation" tabIndex={0} style={style} {...stylex.props(styles.scroller)} />;
 }) };
 
@@ -164,11 +164,14 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom }: {
   else if (isRunning) groups.push({ kind: 'working' });
   chat.queuedMessages.forEach((_, index) => groups.push({ kind: 'queue', index }));
   if (chat.isQueuePaused) groups.push({ kind: 'paused' });
-  return <div ref={containerRef} id="messages" {...stylex.props(styles.messages)} {...handlers} onClickCapture={event => { if (event.target instanceof Element && event.target.closest('summary')) isFollowingRef.current = false; }} onPointerDownCapture={event => { if (event.target instanceof Element && event.target.id === 'chatScroll') isFollowingRef.current = false; }} onWheelCapture={() => { isFollowingRef.current = false; }} onTouchMoveCapture={() => { isFollowingRef.current = false; }} onKeyDownCapture={event => { if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) isFollowingRef.current = false; }}><Virtuoso ref={listRef} data={groups} components={messageListComponents} initialTopMostItemIndex={initialLocation} initialItemCount={8} defaultItemHeight={96} increaseViewportBy={240} atBottomThreshold={2} atBottomStateChange={isAtBottom => { if (isAtBottom) isFollowingRef.current = true; onAtBottomChange(isAtBottom); }} followOutput={false} totalListHeightChanged={followLatest} style={{ height: '100%', visibility: isFontReady ? 'visible' : 'hidden' }} computeItemKey={(_, group) => group.kind === 'message' ? group.message.responseId ?? 'message-' + group.message.seq : group.kind === 'activity' ? 'activity-' + group.messages[0].seq : group.kind === 'queue' ? chat.queuedMessages[group.index].id : group.kind === 'live' ? liveAssistant?.responseId ?? liveAssistant?.streamId ?? 'live' : group.kind} itemContent={(index, group) => <div {...stylex.props(styles.row, group.kind === 'activity' && styles.activityRow, index === 0 && styles.firstRow, index === groups.length - 1 && styles.lastRow)}>{renderGroup(group)}</div>} />{menu}</div>;
+  return <div ref={containerRef} id="messages" {...stylex.props(styles.messages)} {...handlers} onClickCapture={event => { if (event.target instanceof Element && event.target.closest('summary')) isFollowingRef.current = false; }} onPointerDownCapture={event => { if (event.target instanceof Element && event.target.id === 'chatScroll') isFollowingRef.current = false; }} onWheelCapture={() => { isFollowingRef.current = false; }} onTouchMoveCapture={() => { isFollowingRef.current = false; }} onKeyDownCapture={event => { if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) isFollowingRef.current = false; }}><Virtuoso ref={listRef} data={groups} components={messageListComponents} initialTopMostItemIndex={initialLocation} initialItemCount={8} defaultItemHeight={96} increaseViewportBy={240} atBottomThreshold={2} atBottomStateChange={isAtBottom => { if (isAtBottom) isFollowingRef.current = true; onAtBottomChange(isAtBottom); }} followOutput={false} totalListHeightChanged={followLatest} style={{ height: '100%', visibility: isFontReady ? 'visible' : 'hidden' }} computeItemKey={(_, group) => group.kind === 'message' ? group.message.responseId ?? 'message-' + group.message.seq : group.kind === 'activity' ? 'activity-' + group.messages[0].seq : group.kind === 'queue' ? chat.queuedMessages[group.index].id : group.kind === 'live' ? liveAssistant?.responseId ?? liveAssistant?.streamId ?? 'live' : group.kind} itemContent={(index, group) => <div {...stylex.props(styles.row, group.kind === 'activity' && styles.activityRow, index === 0 && styles.firstRow)}>{renderGroup(group)}</div>} />{menu}</div>;
 
   function followLatest() {
     cancelAnimationFrame(scrollFrameRef.current);
-    scrollFrameRef.current = requestAnimationFrame(() => { if (isFollowingRef.current) listRef.current?.scrollToIndex(initialLocation); });
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      const scroller = containerRef.current?.querySelector<HTMLElement>('#chatScroll');
+      if (isFollowingRef.current && scroller) listRef.current?.scrollTo({ top: scroller.scrollHeight - scroller.clientHeight, behavior: 'instant' });
+    });
   }
 
   function renderGroup(group: typeof groups[number]) {
@@ -219,7 +222,7 @@ const styles = stylex.create({
   row: { display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: 736, margin: '0 auto', padding: '0 max(20px, env(safe-area-inset-right)) 14px max(20px, env(safe-area-inset-left))', alignItems: 'stretch' },
   activityRow: { paddingBottom: 4 },
   firstRow: { paddingTop: 'calc(var(--header-height) + 12px)' },
-  lastRow: { paddingBottom: 'calc(var(--composer-height) + 14px)' },
+  bottomSpace: { height: 'var(--composer-height)' },
   message: { minWidth: 0, maxWidth: '100%', flexShrink: 0 },
   user: { alignSelf: 'flex-end', backgroundColor: tokens.bubble, borderRadius: 24, padding: '12px 18px', maxWidth: '88%', fontSize: '1rem', lineHeight: 1.55 },
   userText: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
