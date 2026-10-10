@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { formatRequestError } from "./errors"
 import { useAutoRefresh } from "./useAutoRefresh"
+import {
+  isRecord,
+  parseChatMessage,
+  parseSessionsResponse,
+  parseMessagesResponse,
+  parseRunRequest,
+  parseStartedRun,
+  parseUploadAttachment,
+  parseDeletedSession,
+  parseAbortedRun,
+  parseRunStatus,
+} from "./responses"
 
 import type {
   ChatMessage,
@@ -24,35 +36,12 @@ const FOLLOWUP_REQUEST_TIMEOUT_MS = 60_000
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
 const MAX_STALE_STREAM_KEYS = 128
-const MESSAGE_ROLES: ChatMessage["role"][] = ["user", "assistant", "toolResult", "system"]
-
-type SessionsResponse = {
-  items: ChatSession[]
-  nextCursor?: string
-  total: number
-  matched: number
-}
-
-type MessagesResponse = {
-  sessionId: string
-  messages: ChatMessage[]
-  offset: number
-  nextSeq: number
-  running: boolean
-}
 
 type PendingRequest = {
   prompt: string
   sessionId?: string
   generation: number
   resolve: (accepted: boolean) => void
-}
-
-type RunRequestResponse = {
-  status: "pending" | "started" | "error"
-  sessionId?: string
-  runId?: string
-  message?: string
 }
 
 type ActiveLiveAssistant = LiveAssistant & {
@@ -139,10 +128,6 @@ const parseApiError = async (response: Response) => {
   return body || `Request failed (${response.status}).`
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null
-}
-
 const parseQueueResponse = (value: unknown): QueueResponse => {
   if (!isRecord(value) || !Array.isArray(value.items) || typeof value.isPaused !== "boolean") {
     throw new Error("Invalid queue response.")
@@ -152,13 +137,7 @@ const parseQueueResponse = (value: unknown): QueueResponse => {
         !Array.isArray(item.attachments) || !["queued", "sending", "error"].includes(String(item.status))) {
       throw new Error("Invalid queued message.")
     }
-    const attachments = item.attachments.map((attachment): UploadAttachment => {
-      if (!isRecord(attachment) || typeof attachment.id !== "string" || typeof attachment.name !== "string" ||
-          typeof attachment.mime !== "string" || typeof attachment.bytes !== "number" || typeof attachment.url !== "string") {
-        throw new Error("Invalid queued attachment.")
-      }
-      return { id: attachment.id, name: attachment.name, mime: attachment.mime, bytes: attachment.bytes, url: attachment.url }
-    })
+    const attachments = item.attachments.map(parseUploadAttachment)
     return {
       id: item.id, prompt: item.prompt, attachments,
       status: item.status === "sending" ? "sending" : item.status === "error" ? "error" : "queued",
@@ -167,16 +146,6 @@ const parseQueueResponse = (value: unknown): QueueResponse => {
     }
   })
   return { items, isPaused: value.isPaused }
-}
-
-const isChatMessage = (value: unknown): value is ChatMessage => {
-  if (!isRecord(value)) return false
-  return (
-    typeof value.seq === "number" &&
-    typeof value.role === "string" &&
-    MESSAGE_ROLES.some((role) => role === value.role) &&
-    Array.isArray(value.blocks)
-  )
 }
 
 const parseSocketMessage = (raw: string): SocketMessage | undefined => {
@@ -188,7 +157,7 @@ const parseSocketMessage = (raw: string): SocketMessage | undefined => {
       requestId: typeof value.requestId === "string" ? value.requestId : undefined,
       sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
       runId: typeof value.runId === "string" ? value.runId : undefined,
-      message: isChatMessage(value.message) ? value.message : undefined,
+      message: isRecord(value.message) ? parseChatMessage(value.message) : undefined,
       running: Array.isArray(value.running)
         ? value.running.filter((item): item is string => typeof item === "string")
         : undefined,
@@ -338,10 +307,10 @@ export const useChat = (): UseChat => {
     return response
   }, [])
 
-  const api = useCallback(async <T,>(path: string, init?: RequestInit) => {
+  const api = useCallback(async <T,>(path: string, parse: (value: unknown) => T, init?: RequestInit) => {
     const response = await request(path, init)
     const value: unknown = await response.json()
-    return value as T
+    return parse(value)
   }, [request])
 
   const releaseQueueEdit = useCallback(() => {
@@ -392,8 +361,8 @@ export const useChat = (): UseChat => {
 
   const fetchMessages = useCallback(
     async (selectedSessionId: string, generation: number) => {
-      const result = await api<MessagesResponse>(
-        `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages?tail=${MESSAGE_TAIL}`,
+      const result = await api(
+        `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages?tail=${MESSAGE_TAIL}`, parseMessagesResponse,
       )
       if (
         isUnmountedRef.current ||
@@ -439,7 +408,7 @@ export const useChat = (): UseChat => {
       if (mode === "more" && cursorRef.current) params.set("cursor", cursorRef.current)
       if (searchQueryRef.current.trim()) params.set("q", searchQueryRef.current.trim())
       try {
-        const result = await api<SessionsResponse>(`/api/sessions?${params}`, { cache: "no-store", signal })
+        const result = await api(`/api/sessions?${params}`, parseSessionsResponse, { cache: "no-store", signal })
         if (signal?.aborted || generation !== listGenerationRef.current || isUnmountedRef.current) return
         updateSessions((current) => {
           const firstPageTail = result.items.at(-1)
@@ -668,8 +637,8 @@ export const useChat = (): UseChat => {
             return
           }
           try {
-            const result = await api<RunRequestResponse>(
-              `/api/run-requests/${encodeURIComponent(requestId)}`,
+            const result = await api(
+              `/api/run-requests/${encodeURIComponent(requestId)}`, parseRunRequest,
             )
             if (result.status === "started" && result.sessionId && result.runId) {
               acceptRun(requestId, result.sessionId, result.runId)
@@ -1000,7 +969,7 @@ export const useChat = (): UseChat => {
         const path = selectedSessionId
           ? `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`
           : "/api/runs"
-        const result = await api<{ sessionId: string; runId: string; running: boolean }>(path, {
+        const result = await api(path, parseStartedRun, {
           method: "POST",
           body: JSON.stringify({ prompt: text, attachments: payloadAttachments }),
         })
@@ -1140,7 +1109,7 @@ export const useChat = (): UseChat => {
   const upload = useCallback(
     async (file: File) => {
       try {
-        return await api<UploadAttachment>("/api/upload", {
+        return await api("/api/upload", parseUploadAttachment, {
           method: "POST",
           headers: { "X-Filename": encodeURIComponent(file.name || "image") },
           body: file,
@@ -1187,7 +1156,7 @@ export const useChat = (): UseChat => {
   const deleteSession = useCallback(
     async (deletedSessionId: string) => {
       try {
-        await api<{ deleted: boolean }>(`/api/sessions/${encodeURIComponent(deletedSessionId)}`, {
+        await api(`/api/sessions/${encodeURIComponent(deletedSessionId)}`, parseDeletedSession, {
           method: "DELETE",
         })
         updateSessions((current) =>
@@ -1209,8 +1178,8 @@ export const useChat = (): UseChat => {
     const selectedSessionId = sessionIdRef.current
     if (!selectedSessionId) return false
     try {
-      const result = await api<{ aborted: boolean }>(
-        `/api/sessions/${encodeURIComponent(selectedSessionId)}/abort`,
+      const result = await api(
+        `/api/sessions/${encodeURIComponent(selectedSessionId)}/abort`, parseAbortedRun,
         { method: "POST" },
       )
       if (result.aborted) {
@@ -1371,8 +1340,8 @@ export const useChat = (): UseChat => {
       const selectedSessionId = sessionIdRef.current
       if (!selectedSessionId || !runningSessionIds.includes(selectedSessionId)) return
       const generation = openGenerationRef.current
-      void api<{ running: boolean }>(
-        `/api/sessions/${encodeURIComponent(selectedSessionId)}/status`,
+      void api(
+        `/api/sessions/${encodeURIComponent(selectedSessionId)}/status`, parseRunStatus,
       )
         .then((result) => {
           if (

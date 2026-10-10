@@ -64,6 +64,7 @@ class Run:
     output: str = ""
     error: str | None = None
     is_aborted: bool = False
+    canonical_start_seq: int = 0
     stream_snapshot: dict | None = None
     stream_complete: bool = False
     stream_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=256))
@@ -262,12 +263,17 @@ async def _spawn(args: list[str]) -> tuple[asyncio.subprocess.Process, int]:
     master, slave = _open_pty()
     env = dict(os.environ)
     env["TERM"] = "xterm-256color"
-    proc = await asyncio.create_subprocess_exec(
-        config.ASIDE_BIN, *args,
-        stdin=slave, stdout=slave, stderr=slave,
-        env=env, start_new_session=True,
-    )
-    os.close(slave)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            config.ASIDE_BIN, *args,
+            stdin=slave, stdout=slave, stderr=slave,
+            env=env, start_new_session=True,
+        )
+    except BaseException:
+        os.close(master)
+        raise
+    finally:
+        os.close(slave)
     return proc, master
 
 
@@ -498,12 +504,14 @@ async def continue_run(session_id: str, prompt: str, *, model: str | None = None
             raise FileExistsError(RUN_ALREADY_RUNNING_MESSAGE)
         try:
             await repair_browser_binding(session_id)
+            messages, _offset = await asyncio.to_thread(sessions.read_messages, session_id)
+            next_seq = messages[-1]["seq"] + 1 if messages else 0
             proc, master = await _spawn(args)
         except Exception:
             _remove_stream_log(stream_log_path)
             raise
         run = Run(session_id=session_id, prompt=prompt, proc=proc, master_fd=master,
-                  stream_log_path=stream_log_path)
+                  stream_log_path=stream_log_path, canonical_start_seq=next_seq)
         _runs[session_id] = run
         asyncio.create_task(_drain(run))
         asyncio.create_task(_tail_stream_log(run))
@@ -545,7 +553,7 @@ async def stop_session(session_id: str) -> bool:
             config.ASIDE_BIN, "session", "stop", *_account_args(), session_id,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        out, _ = await _communicate(proc, timeout=15)
     except Exception:
         log.warning("session stop failed session=%s", session_id, exc_info=True)
         return False
@@ -562,16 +570,7 @@ async def delete_session(session_id: str) -> bool:
         config.ASIDE_BIN, "session", "delete", *_account_args(), session_id,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
-    try:
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except (TimeoutError, asyncio.CancelledError):
-        if proc.returncode is None:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-        await proc.communicate()
-        raise
+    out, _ = await _communicate(proc, timeout=30)
     text = _strip_ansi(out.decode("utf-8", "replace")).strip()
     log.info("session delete session=%s rc=%s out=%s", session_id, proc.returncode, text[:120])
     if proc.returncode != 0 and text != "Session not found":
@@ -586,26 +585,30 @@ async def delete_session(session_id: str) -> bool:
     return True
 
 
+async def _communicate(proc: asyncio.subprocess.Process, *, timeout: float) -> tuple[bytes, bytes | None]:
+    try:
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except (TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+        raise
+
+
 async def steer(session_id: str, prompt: str) -> bool:
     """진행 중인 스텝을 끊고 새 지시를 넣는다 (`aside session steer`)."""
-    return await _session_prompt_cmd("steer", session_id, prompt)
-
-
-async def queue(session_id: str, prompt: str) -> bool:
-    """현재 스텝이 끝난 뒤 이어서 실행할 지시를 넣는다 (`aside session queue`)."""
-    return await _session_prompt_cmd("queue", session_id, prompt)
-
-
-async def _session_prompt_cmd(cmd: str, session_id: str, prompt: str) -> bool:
     try:
         proc = await asyncio.create_subprocess_exec(
-            config.ASIDE_BIN, "session", cmd, *_account_args(), session_id, prompt,
+            config.ASIDE_BIN, "session", "steer", *_account_args(), session_id, prompt,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        out, _ = await _communicate(proc, timeout=15)
     except Exception:
-        log.warning("session %s failed session=%s", cmd, session_id, exc_info=True)
+        log.warning("session steer failed session=%s", session_id, exc_info=True)
         return False
-    log.info("session %s session=%s rc=%s out=%s", cmd, session_id, proc.returncode,
+    log.info("session steer session=%s rc=%s out=%s", session_id, proc.returncode,
              _strip_ansi(out.decode("utf-8", "replace")).strip()[:120])
     return proc.returncode == 0

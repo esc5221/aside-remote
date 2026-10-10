@@ -9,8 +9,9 @@ import { formatRequestError } from './errors';
 import { TEXT_SIZES } from './theme';
 import { useAutoRefresh } from './useAutoRefresh';
 import type { PushNotifications } from './notifications';
+import { parseHealth } from './responses';
 
-type Health = { asideApp: boolean; daemon?: { ready?: boolean; error?: string } };
+type Health = ReturnType<typeof parseHealth>;
 
 export function Settings({ chat, onClose, notify, notifications, isDarkMode, onThemeToggle, textSize, onTextSizeChange }: { chat: UseChat; onClose: () => void; notify: (text: string, kind?: 'error' | 'success') => void; notifications: PushNotifications; isDarkMode: boolean; onThemeToggle: () => void; textSize: number; onTextSizeChange: (size: number) => void }) {
   const shouldReduceMotion = useReducedMotion();
@@ -18,7 +19,7 @@ export function Settings({ chat, onClose, notify, notifications, isDarkMode, onT
   const [browserStatus, setBrowserStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
   const refresh = useCallback(async (signal: AbortSignal) => {
     const [healthResult, browserResult] = await Promise.allSettled([
-      chat.request('/api/health', { cache: 'no-store', signal }).then(response => response.json() as Promise<Health>),
+      chat.request('/api/health', { cache: 'no-store', signal }).then(response => response.json()).then(parseHealth),
       chat.request('/api/tabs?refresh=true', { cache: 'no-store', signal }),
     ]);
     if (signal.aborted) return;

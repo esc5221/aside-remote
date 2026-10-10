@@ -27,7 +27,8 @@ What you get:
   session files. Running conversations must be stopped in Aside before deletion.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
 - **Native Web Push notifications** when a response finishes while this device is
-  away from the app, including iPhone Home Screen apps. Enable them in Settings →
+  away from the app, including iPhone Home Screen apps. Alerts show the completed
+  answer preview; long answers are truncated to fit the push payload. Enable them in Settings →
   Notifications. Optional ntfy notifications remain available.
 
 The UI language is English. Conversation content keeps its original language.
@@ -49,7 +50,7 @@ The app follows a ChatGPT iOS-inspired conversation layout with an anchored comp
 - macOS with the [Aside](https://aside.dev) app installed and signed in
   (the bridge drives Aside's own CLI — it has no AI keys of its own)
 - Python ≥ 3.10
-- Node.js ≥ 22.12 and npm for building the frontend
+- Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ and npm for building the frontend
 
 ## Quick start
 

@@ -293,12 +293,6 @@ async def icon(name: str):
 
 
 # ------------------------------------------------------------------ 폰트
-@app.get("/api/font/list")
-async def font_list():
-    """설정 화면이 고를 수 있는 본문 폰트 목록."""
-    return {"fonts": fonts.catalog()}
-
-
 @app.get("/api/font/css/{font_id}")
 async def font_css(font_id: str):
     """폰트 CSS. 폰트 파일 URL 은 브리지 경유로 치환되어 나간다 → 브라우저는 서드파티를 안 본다."""
@@ -440,15 +434,16 @@ def _with_attachments(payload: dict) -> str:
 
     `aside exec` 은 텍스트 프롬프트만 받는다 → 이미지는 "여기 있으니 읽어봐"로 전달하는 수밖에 없다.
     """
-    prompt = (payload.get("prompt") or "").strip()
-    atts = payload.get("attachments") or []
-    clean = []
-    for a in atts:
-        fid = (a or {}).get("id") if isinstance(a, dict) else a
-        p = uploads.path_of(str(fid or ""))
-        if p:
-            clean.append({"name": (a.get("name") if isinstance(a, dict) else None) or p.name,
-                          "path": str(p)})
+    prompt = payload.get("prompt", "")
+    if not isinstance(prompt, str):
+        raise HTTPException(400, "invalid prompt")
+    for name in ("model", "effort", "speed", "provider", "permission", "host"):
+        value = payload.get(name)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(400, "invalid run options")
+    prompt = prompt.strip()
+    clean = [{"name": attachment["name"], "path": str(config.UPLOAD_DIR / attachment["id"])}
+             for attachment in _validated_attachments(payload)]
     return (uploads.prompt_prefix(clean) + prompt) if clean else prompt
 
 
@@ -590,7 +585,8 @@ async def api_followup_steer(session_id: str, item_id: str):
 
 
 def _require_session(session_id: str) -> None:
-    if not re.fullmatch(r"[A-Za-z0-9]{12,32}", session_id) or sessions.session_dir(session_id) is None:
+    if (not isinstance(session_id, str) or not re.fullmatch(r"[A-Za-z0-9]{12,32}", session_id)
+            or sessions.session_dir(session_id) is None):
         raise HTTPException(404, runner.SESSION_NOT_FOUND_MESSAGE)
 
 
@@ -618,7 +614,7 @@ def _followup_content(payload: dict) -> dict:
 
 
 def _validated_attachments(payload: dict) -> list[dict]:
-    raw = payload.get("attachments") or []
+    raw = payload.get("attachments", [])
     if not isinstance(raw, list):
         raise HTTPException(400, "invalid attachments")
     attachments = []
@@ -751,10 +747,10 @@ async def api_tab_text(target_id: str, interactive: bool = False, session: str |
 
 @app.post("/api/tabs", dependencies=[Auth])
 async def api_open_tab(payload: dict, session: str | None = None):
-    url = (payload.get("url") or "").strip()
-    if not url:
+    url = payload.get("url")
+    if not isinstance(url, str) or not url.strip():
         raise HTTPException(400, "url required")
-    return await browser.open_tab(url, session_id=session)
+    return await browser.open_tab(url.strip(), session_id=session)
 
 
 @app.post("/api/tabs/{target_id}/focus", dependencies=[Auth])
@@ -770,11 +766,14 @@ async def api_close_tab(target_id: str, session: str | None = None):
 @app.post("/api/repl", dependencies=[Auth])
 async def api_repl(payload: dict):
     """탈출구. 본인 전용이니까 남겨둔다."""
-    code = payload.get("code") or ""
-    if not code.strip():
+    code = payload.get("code")
+    if not isinstance(code, str) or not code.strip():
         raise HTTPException(400, "code required")
-    out = await mcp.repl(code, title=payload.get("title") or "Manual REPL",
-                         wrap=bool(payload.get("wrap", True)))
+    title = payload.get("title") or "Manual REPL"
+    wrap = payload.get("wrap", True)
+    if not isinstance(title, str) or not isinstance(wrap, bool):
+        raise HTTPException(400, "invalid REPL options")
+    out = await mcp.repl(code, title=title, wrap=wrap)
     return {"output": out}
 
 
@@ -912,8 +911,28 @@ class Hub:
         log.info("run.done broadcast session=%s", sid)
         notifications = [push_ntfy(sid, run)]
         if not run.is_aborted:
-            notifications.append(push_notifications.complete(sid, run.stream_id, has_error=bool(run.error or run.exit_code)))
+            notifications.append(self._push_answer(sid, run))
         await asyncio.gather(*notifications)
+
+    async def _push_answer(self, session_id: str, run: "runner.Run") -> None:
+        try:
+            deadline = time.monotonic() + 2
+            while not run.stream_complete and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+            snapshot = run.stream_snapshot
+            text = sessions.rewrite_local_paths(snapshot["text"]) if snapshot and snapshot.get("done") is True else ""
+            if not text:
+                messages, _offset = await asyncio.to_thread(sessions.read_messages, session_id)
+                text = next(("\n".join(block["text"] for block in message["blocks"] if block["type"] == "text")
+                             for message in reversed(messages)
+                             if message["role"] == "assistant" and message["seq"] >= run.canonical_start_seq
+                             and type(message.get("ts")) in (int, float)
+                             and message["ts"] <= run.finished_at * 1000), "")
+            if not run.is_aborted:
+                await push_notifications.complete(session_id, run.stream_id, text=text,
+                                                  has_error=bool(run.error or run.exit_code))
+        except Exception:
+            log.exception("Could not prepare response notification.")
 
 
 async def push_ntfy(session_id: str, run: "runner.Run") -> None:
@@ -1169,7 +1188,17 @@ async def ws_endpoint(ws: WebSocket):
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            await _handle_ws(ws, msg)
+            if not isinstance(msg, dict):
+                await _send(ws, {"op": "error", "message": "Invalid message"})
+                continue
+            try:
+                await _handle_ws(ws, msg)
+            except HTTPException as error:
+                request_id = msg.get("requestId")
+                pending = _run_requests.get(request_id) if isinstance(request_id, str) else None
+                if msg.get("op") in ("run", "continue") and pending and pending["status"] == "pending":
+                    _finish_run_request(request_id, "error", message=str(error.detail))
+                await _send(ws, {"op": "error", "requestId": request_id, "message": error.detail})
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -1206,9 +1235,11 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
 
     if op == "sub":
         sid = msg.get("sessionId")
-        if not sid:
-            return
-        await hub.subscribe(ws, sid, int(msg.get("fromSeq") or 0), int(msg.get("fromOffset") or 0))
+        _require_session(sid)
+        from_seq, from_offset = msg.get("fromSeq", 0), msg.get("fromOffset", 0)
+        if any(type(value) is not int or value < 0 for value in (from_seq, from_offset)):
+            raise HTTPException(400, "Invalid subscription position")
+        await hub.subscribe(ws, sid, from_seq, from_offset)
         await _send(ws, {"op": "sub.ok", "sessionId": sid, "requestId": rid})
         await hub.send_stream_snapshot(ws, sid)
         run = runner.get_run(sid)
@@ -1217,7 +1248,10 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         return
 
     if op == "unsub":
-        hub.unsubscribe(ws, msg.get("sessionId"))
+        sid = msg.get("sessionId")
+        if sid is not None and not isinstance(sid, str):
+            raise HTTPException(400, "Invalid sessionId")
+        hub.unsubscribe(ws, sid)
         return
 
     if op == "run":
@@ -1266,6 +1300,7 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
         if not should_execute:
             return
         sid = msg.get("sessionId")
+        _require_session(sid)
         prompt = _with_attachments(msg)
         if not sid or not prompt:
             message = "sessionId/prompt required"
@@ -1305,7 +1340,8 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
 
     if op == "abort":
         sid = msg.get("sessionId")
-        if sid:
+        if sid is not None:
+            _require_session(sid)
             await followup_queue.pause(sid)
         await _send(ws, {"op": "abort.ok", "requestId": rid,
                          "aborted": (await runner.abort(sid)) if sid else False})

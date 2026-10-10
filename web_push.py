@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -19,6 +20,7 @@ log = logging.getLogger("aside-remote.web-push")
 FOCUS_LEASE_SEC = 25
 PUSH_TTL_SEC = 60 * 60
 PUSH_TIMEOUT_SEC = 10
+MAX_PUSH_PAYLOAD_BYTES = 4096 - 103  # AES128GCM header, authentication tag and delimiter.
 SUBSCRIPTION_LIMIT = 64
 PUSH_HOSTS = ("web.push.apple.com", "fcm.googleapis.com", "updates.push.services.mozilla.com")
 INVALID_SUBSCRIPTION = "Invalid notification subscription."
@@ -142,7 +144,13 @@ class WebPushStore:
         return any(key[0] == subscription_id and value[1] > now and value[2]
                    for key, value in self._presence.items())
 
-    async def complete(self, session_id: str, run_id: str, *, has_error: bool) -> None:
+    async def complete(self, session_id: str, run_id: str, *, text: str, has_error: bool) -> None:
+        body = re.sub(r"</?citation\b[^>]*>", "", text, flags=re.IGNORECASE).strip()
+        if has_error:
+            body = "Your response could not finish. Tap to open the conversation."
+        elif not body:
+            body = "Your response is ready. Tap to open the conversation."
+
         async def send(subscription_id: str, record: dict) -> None:
             async with self._send_slots:
                 if self.is_focused(subscription_id) or subscription_id not in self.subscriptions:
@@ -150,13 +158,28 @@ class WebPushStore:
                 origin = record["origin"]
                 notification = {
                     "title": "Aside",
-                    "body": "Your response could not finish. Tap to open the conversation." if has_error else "Your response is ready. Tap to open the conversation.",
+                    "body": body,
                     "navigate": f"{origin}/c/{session_id}",
                     "tag": f"aside:{run_id}",
                     "icon": f"{origin}/icons/icon-192.png",
                     "silent": False,
                 }
-                data = json.dumps({"web_push": 8030, "notification": notification})
+                def payload() -> str:
+                    return json.dumps({"web_push": 8030, "notification": notification},
+                                      ensure_ascii=False, separators=(",", ":"))
+
+                data = payload()
+                if len(data.encode("utf-8")) > MAX_PUSH_PAYLOAD_BYTES:
+                    low, high = 0, len(body)
+                    while low < high:
+                        middle = (low + high + 1) // 2
+                        notification["body"] = body[:middle] + "…"
+                        if len(payload().encode("utf-8")) <= MAX_PUSH_PAYLOAD_BYTES:
+                            low = middle
+                        else:
+                            high = middle - 1
+                    notification["body"] = body[:low] + "…"
+                    data = payload()
                 try:
                     await asyncio.to_thread(
                         webpush, subscription_info=record["subscription"], data=data,

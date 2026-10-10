@@ -29,34 +29,17 @@ CACHE = config.CACHE_DIR / "fonts"
 CACHE.mkdir(parents=True, exist_ok=True)
 
 # 구글이 woff2(가장 작은 포맷)를 주도록 최신 크롬 UA 를 쓴다. UA 를 안 주면 ttf 를 준다.
-UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+# Wanted Sans uses fixed WOFF2 assets and needs no browser-specific User-Agent.
 
 # 화이트리스트 — 임의 URL 프록시가 되지 않게 정확히 아는 것만 허용한다.
 WANTED_SANS_ROOT = ("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/"
                     "packages/wanted-sans/fonts/webfonts/variable/split/")
-FAMILIES: dict[str, dict] = {
-    "wanted-sans": {
-        "label": "Wanted Sans",
-        "kind": "sans",
-        "css": WANTED_SANS_ROOT + "WantedSansVariable.min.css",
-        "stack": '"Wanted Sans Variable", "Wanted Sans", -apple-system, BlinkMacSystemFont, sans-serif',
-    },
+FAMILIES: dict[str, str] = {
+    "wanted-sans": WANTED_SANS_ROOT + "WantedSansVariable.min.css",
 }
 
 _ALLOWED_HOSTS = ("cdn.jsdelivr.net",)
 _URL_RE = re.compile(r"url\((https://[^)]+)\)")
-
-
-def catalog() -> list[dict]:
-    return [{"id": k, "label": v["label"], "kind": v["kind"],
-             "webfont": bool(v["css"]), "stack": v["stack"]}
-            for k, v in FAMILIES.items()]
-
-
-def stack(font_id: str) -> str | None:
-    f = FAMILIES.get(font_id)
-    return f["stack"] if f else None
 
 
 def _key(url: str, ext: str) -> Path:
@@ -73,20 +56,17 @@ except Exception:
 
 async def css(client: httpx.AsyncClient, font_id: str) -> str:
     """폰트 CSS 를 받아 폰트 파일 URL 을 브리지 경유 경로로 바꿔서 돌려준다."""
-    f = FAMILIES.get(font_id)
-    if not f or not f["css"]:
+    url = FAMILIES.get(font_id)
+    if not url:
         return "/* system font — no webfont */"
-    cached = _key(f["css"], ".css")
+    cached = _key(url, ".css")
     if cached.exists():
         text = cached.read_text()
     else:
-        r = await client.get(f["css"], headers={"User-Agent": UA}, timeout=20,
-                             follow_redirects=True)
+        r = await client.get(url, timeout=20, follow_redirects=True)
         r.raise_for_status()
         text = r.text
         cached.write_text(text)
-
-    base = f["css"]
 
     def sub(m: re.Match) -> str:
         url = m.group(1)
@@ -94,7 +74,7 @@ async def css(client: httpx.AsyncClient, font_id: str) -> str:
 
     # jsDelivr 쪽은 `../../../` 같은 상대경로를 쓴다. 문자열로 이어붙이면 깨지므로 urljoin 으로 푼다.
     text = re.sub(r"""url\((?!https?:|data:)['"]?([^)'"]+)['"]?\)""",
-                  lambda m: f"url({urljoin(base, m.group(1))})", text)
+                  lambda m: f"url({urljoin(url, m.group(1))})", text)
     return _URL_RE.sub(sub, text)
 
 
@@ -120,7 +100,7 @@ async def file(client: httpx.AsyncClient, fid: str) -> tuple[bytes, str] | None:
     cached = _key(url, ext)
     if cached.exists():
         return cached.read_bytes(), "font/woff2"
-    r = await client.get(url, headers={"User-Agent": UA}, timeout=30, follow_redirects=True)
+    r = await client.get(url, timeout=30, follow_redirects=True)
     r.raise_for_status()
     cached.write_bytes(r.content)
     log.info("font cached %s (%dB)", url.rsplit("/", 1)[-1][:24], len(r.content))

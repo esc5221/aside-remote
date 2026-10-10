@@ -17,5 +17,10 @@ web/vendor/remixicon.symbol.svg
   Original symbol paths and view boxes are unchanged.
   The full license is in web/vendor/remixicon.LICENSE.
 
-Web fonts are proxied at runtime from Google Fonts and jsDelivr (SIL Open Font License)
-and cached locally; no font files are distributed with this repository.
+Wanted Sans is proxied at runtime from jsDelivr and cached locally (SIL Open Font License).
+
+web/src/assets/fonts/D2Coding-Regular.woff2 and D2Coding-Bold.woff2
+  D2Coding — SIL Open Font License 1.1
+  Copyright (c) 2015, NAVER Corporation
+  https://github.com/naver/d2codingfont
+  The full license is in web/src/assets/fonts/D2Coding.OFL.txt.
