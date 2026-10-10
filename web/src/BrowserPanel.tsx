@@ -261,11 +261,11 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
             {(!previewUrl || isSelectedTabAsleep || isSelectedTabMissing) && <PreviewMessage status={isSelectedTabMissing ? "missing" : isSelectedTabAsleep ? "asleep" : previewStatus} />}
           </div>
 
-          <div {...stylex.props(styles.previewBar)}>
+          {(!previewUrl || isSelectedTabMissing || isSelectedTabAsleep || previewStatus === "asleep" || previewStatus === "error") && <div {...stylex.props(styles.previewBar)}>
             <span {...stylex.props(styles.status)}>
-              {isSelectedTabMissing ? "Tab closed" : isSelectedTabAsleep || previewStatus === "asleep" ? "Tab asleep" : previewStatus === "error" ? "Reconnecting…" : previewUrl ? "Live" : "Connecting…"}
+              {isSelectedTabMissing ? "Tab closed" : isSelectedTabAsleep || previewStatus === "asleep" ? "Tab asleep" : previewStatus === "error" ? "Reconnecting…" : "Connecting…"}
             </span>
-          </div>
+          </div>}
 
           <textarea
             {...stylex.props(styles.textarea)}

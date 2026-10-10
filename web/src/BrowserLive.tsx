@@ -19,7 +19,6 @@ export function BrowserLive({ sessionId, request, onOpen, isVisible, isBrowserOp
 }) {
   const [tab, setTab] = useState<BrowserTab>();
   const [imageUrl, setImageUrl] = useState<string>();
-  const [isConnected, setConnected] = useState(false);
   const [isMinimized, setMinimized] = useState(false);
   const [dismissedTarget, setDismissedTarget] = useState<string>();
   const boundsRef = useRef<HTMLDivElement>(null);
@@ -87,7 +86,7 @@ export function BrowserLive({ sessionId, request, onOpen, isVisible, isBrowserOp
       if (!isTabResponse(value)) throw new Error('Invalid browser response.');
       setTab(value.tabs.find(tab => tab.active) ?? [...value.tabs].sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0]);
     } catch {
-      if (!signal.aborted) setConnected(false);
+      return;
     }
   }, [request, sessionQuery]);
   useAutoRefresh(loadTabs, 2_000, isVisible);
@@ -103,15 +102,13 @@ export function BrowserLive({ sessionId, request, onOpen, isVisible, isBrowserOp
       const previousUrl = imageRef.current;
       imageRef.current = nextUrl;
       setImageUrl(nextUrl);
-      setConnected(true);
       if (previousUrl) URL.revokeObjectURL(previousUrl);
     } catch {
-      if (!signal.aborted) setConnected(false);
+      return;
     }
   }, [request, sessionQuery, targetId]);
   useEffect(() => {
     setImageUrl(undefined);
-    setConnected(false);
     return () => {
       if (imageRef.current) URL.revokeObjectURL(imageRef.current);
       imageRef.current = undefined;
@@ -125,10 +122,9 @@ export function BrowserLive({ sessionId, request, onOpen, isVisible, isBrowserOp
       <button type="button" aria-label={isMinimized ? 'Restore browser preview' : 'Minimize browser preview'} aria-expanded={!isMinimized} {...stylex.props(styles.control)} onClick={() => setMinimized(current => !current)}>{isMinimized ? <Maximize2 size={15} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Minus size={17} strokeWidth={ICON_STROKE} aria-hidden="true" />}</button>
       <button type="button" aria-label="Close browser preview" {...stylex.props(styles.control)} onClick={() => { setDismissedTarget(tab.targetId); document.querySelector<HTMLButtonElement>('button[aria-label="Open browser"]')?.focus({ preventScroll: true }); }}><X size={17} strokeWidth={ICON_STROKE} aria-hidden="true" /></button>
     </div>
-    {!isMinimized && <>
+    {!isMinimized &&
       <button type="button" aria-label="Expand live browser preview" aria-haspopup="dialog" {...stylex.props(styles.frame)} onPointerDown={startDrag} onClick={openPreview}>{imageUrl ? <img src={imageUrl} alt="" draggable={false} {...stylex.props(styles.image)} /> : <span {...stylex.props(styles.placeholder)}>{tab.loaded === false ? 'Tab asleep' : 'Connecting…'}</span>}</button>
-      <span {...stylex.props(styles.status)}><span {...stylex.props(styles.dot, isConnected && styles.connected)} />{isConnected ? 'Live' : 'Connecting…'}</span>
-    </>}
+    }
   </motion.div>}</AnimatePresence></div>;
 }
 
@@ -142,7 +138,4 @@ const styles = stylex.create({
   frame: { display: 'flex', width: '100%', minHeight: 0, aspectRatio: '4 / 3', padding: 0, borderWidth: 0, overflow: 'hidden', backgroundColor: tokens.surface, touchAction: 'none', cursor: 'grab' },
   image: { width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'top' },
   placeholder: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', fontSize: '0.6875rem', color: tokens.muted },
-  status: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 5, padding: '7px 10px', fontSize: '0.625rem', color: tokens.muted },
-  dot: { width: 5, height: 5, borderRadius: '50%', backgroundColor: tokens.muted },
-  connected: { backgroundColor: tokens.text },
 });
