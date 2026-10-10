@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { AnimatePresence } from "motion/react"
 import { formatRequestError } from "./errors"
 
 import { tokens } from "./tokens.stylex"
@@ -17,6 +18,7 @@ import { focusDialogSurface } from "./ui"
 import { useAutoRefresh } from "./useAutoRefresh"
 import type { BrowserTab } from "./types"
 import { getWebsiteUrl, isTabResponse, OPEN_IN_BROWSER_LABEL } from "./browser"
+import { BrowserPreview } from "./BrowserPreview"
 
 const TAB_REFRESH_INTERVAL_MS = 2_000
 const PREVIEW_REFRESH_INTERVAL_MS = 1_000
@@ -48,6 +50,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const [newTabUrl, setNewTabUrl] = useState("")
   const [previewUrl, setPreviewUrl] = useState<string>()
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle")
+  const [isPreviewExpanded, setPreviewExpanded] = useState(false)
   const [busyAction, setBusyAction] = useState<string>()
   const [isConfirmingClose, setIsConfirmingClose] = useState(false)
   const listGenerationRef = useRef(0)
@@ -156,6 +159,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     previewUrlRef.current = undefined
     setPreviewUrl(undefined)
+    setPreviewExpanded(false)
     setIsConfirmingClose(false)
     setPreviewStatus("idle")
     return () => { captureGenerationRef.current += 1 }
@@ -262,7 +266,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           </a>}
 
           <div {...stylex.props(styles.previewFrame)}>
-            {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} />}
+            {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <button type="button" aria-label="Expand browser view" aria-haspopup="dialog" {...stylex.props(styles.expandPreview)} onClick={() => setPreviewExpanded(true)}><img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} draggable={false} /></button>}
             {(!previewUrl || isSelectedTabAsleep || isSelectedTabMissing) && <PreviewMessage status={isSelectedTabMissing ? "missing" : isSelectedTabAsleep ? "asleep" : previewStatus} />}
           </div>
 
@@ -357,6 +361,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           </div>
         </div>
       )}
+      <AnimatePresence>{isPreviewExpanded && previewUrl && selectedTab && !isSelectedTabAsleep && !isSelectedTabMissing && <BrowserPreview key={selectedTab.targetId} src={previewUrl} title={selectedTab.title || "Browser"} url={websiteUrl} onClose={() => setPreviewExpanded(false)} />}</AnimatePresence>
     </section>
   )
 }
@@ -465,6 +470,7 @@ const styles = stylex.create({
   url: { marginTop: 3, overflowWrap: "anywhere", color: tokens.muted, fontSize: '0.75rem', lineHeight: 1.45, userSelect: "text" },
   previewFrame: { minHeight: 180, maxHeight: "min(46vh, 430px)", aspectRatio: "16 / 10", display: "grid", placeItems: "center", overflow: "hidden", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 16, backgroundColor: tokens.surface },
   preview: { display: "block", width: "100%", height: "100%", objectFit: "contain", backgroundColor: tokens.canvas },
+  expandPreview: { width: "100%", height: "100%", minHeight: 0, padding: 0, borderWidth: 0, overflow: "hidden", backgroundColor: "transparent", cursor: "zoom-in" },
   previewMessage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: 24, textAlign: "center", color: tokens.muted, fontSize: '0.8125rem' },
   previewBar: { minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
   status: { minWidth: 0, color: tokens.muted, fontSize: '0.75rem', overflowWrap: "anywhere" },

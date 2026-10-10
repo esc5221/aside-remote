@@ -20,7 +20,7 @@ export function BrowserIcon({ size = 22 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M3 9h18" /><path d="M6.5 6.5h.01M9.5 6.5h.01M12.5 6.5h.01" strokeWidth="2" /></svg>;
 }
 
-export function Dialog({ title, children, onClose, isWide = false }: { title: string; children: ReactNode; onClose: () => void; isWide?: boolean }) {
+export function Dialog({ title, children, onClose, isWide = false, isFullScreen = false }: { title: string; children: ReactNode; onClose: () => void; isWide?: boolean; isFullScreen?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeRequestedRef = useRef(false);
@@ -44,7 +44,12 @@ export function Dialog({ title, children, onClose, isWide = false }: { title: st
       if (dialog?.open) dialog.close();
       requestAnimationFrame(() => {
         const remaining = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].at(-1);
-        if (remaining) { focusDialogSurface(remaining); return; }
+        if (remaining) {
+          const captured = returnFocusRef.current;
+          if (captured?.isConnected && remaining.contains(captured)) captured.focus({ preventScroll: true });
+          else focusDialogSurface(remaining);
+          return;
+        }
         resolveDialogReturnFocus(returnFocusRef.current, title)?.focus({ preventScroll: true });
       });
     };
@@ -57,16 +62,16 @@ export function Dialog({ title, children, onClose, isWide = false }: { title: st
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
     if (info.offset.y > 96 || info.velocity.y > 700) requestClose();
   }
-  const sheetMotion = shouldReduceMotion
+  const sheetMotion = shouldReduceMotion || isFullScreen
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: .12 } }
     : isMobile
       ? { initial: { y: SHEET_CLOSED_Y, opacity: .98 }, animate: { y: 0, opacity: 1 }, exit: { y: SHEET_CLOSED_Y, opacity: .98 }, transition: { type: 'tween' as const, duration: .32, ease: DIALOG_EASE } }
       : { initial: { opacity: 0, scale: .96, y: 10 }, animate: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: .97, y: 8 }, transition: { duration: .2, ease: DIALOG_EASE } };
-  return <motion.dialog ref={ref} tabIndex={-1} data-motion-overlay="" style={{ pointerEvents: isPresent ? 'auto' : 'none' }} {...stylex.props(styles.dialog)} aria-label={title} onKeyDown={trapDialogFocus} onCancel={event => { event.preventDefault(); requestClose(); }}>
+  return <motion.dialog ref={ref} tabIndex={-1} data-motion-overlay="" style={{ pointerEvents: isPresent ? 'auto' : 'none' }} {...stylex.props(styles.dialog)} aria-label={title} onKeyDown={event => { trapDialogFocus(event); event.stopPropagation(); }} onCancel={event => { event.preventDefault(); event.stopPropagation(); requestClose(); }}>
     <motion.button type="button" tabIndex={-1} data-overlay-backdrop="" aria-label={`Close ${title}`} {...stylex.props(styles.backdrop)} initial={{ opacity: 0 }} animate={{ opacity: isPresent ? 1 : 0 }} transition={{ duration: shouldReduceMotion ? .1 : .2 }} onClick={requestClose} />
-    <motion.div data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} drag={!shouldReduceMotion && isMobile ? 'y' : false} dragControls={dragControls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: .5 }} dragMomentum={false} onDragEnd={finishDrag}>
-      <div {...stylex.props(styles.dragHandle)} aria-hidden="true" onPointerDown={event => { if (isOpenRef.current) dragControls.start(event); }}><span {...stylex.props(styles.dragHandleBar)} /></div>
-      <div {...stylex.props(styles.dialogBody)}>{children}</div>
+    <motion.div data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide, isFullScreen && styles.fullSurface)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} drag={!isFullScreen && !shouldReduceMotion && isMobile ? 'y' : false} dragControls={dragControls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: .5 }} dragMomentum={false} onDragEnd={finishDrag}>
+      {!isFullScreen && <div {...stylex.props(styles.dragHandle)} aria-hidden="true" onPointerDown={event => { if (isOpenRef.current) dragControls.start(event); }}><span {...stylex.props(styles.dragHandleBar)} /></div>}
+      <div {...stylex.props(styles.dialogBody, isFullScreen && styles.fullBody)}>{children}</div>
     </motion.div>
   </motion.dialog>;
 }
@@ -133,6 +138,8 @@ export const styles = stylex.create({
   backdrop: { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, borderWidth: 0, backgroundColor: 'rgb(0 0 0 / .28)' },
   dialogSurface: { position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', width: 'calc(100% - 24px)', maxWidth: 420, maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden', borderRadius: 28, backgroundColor: tokens.canvas, boxShadow: '0 12px 60px rgb(0 0 0 / .14)', '@media (max-width: 700px)': { width: '100%', maxWidth: 680, maxHeight: 'calc(100dvh - 8px)', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } },
   wide: { maxWidth: 680, height: 'min(760px, calc(100dvh - 32px))', '@media (max-width: 700px)': { height: 'min(820px, calc(100dvh - 8px))' } },
+  fullSurface: { width: '100%', maxWidth: 'none', height: '100%', maxHeight: '100%', borderRadius: 0, '@media (max-width: 700px)': { maxWidth: 'none', maxHeight: '100%', borderRadius: 0 } },
+  fullBody: { display: 'flex', flex: 1, minHeight: 0, padding: 0, maxHeight: 'none', overflow: 'hidden', '@media (max-width: 700px)': { padding: 0, maxHeight: 'none' } },
   dragHandle: { display: 'none', height: 24, flexShrink: 0, alignItems: 'center', justifyContent: 'center', touchAction: 'none', cursor: 'grab', '@media (max-width: 700px)': { display: 'flex' } },
   dragHandleBar: { width: 36, height: 5, borderRadius: 999, backgroundColor: tokens.controlBorder },
   dialogBody: { padding: 22, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', overscrollBehavior: 'contain', minWidth: 0, '@media (max-width: 700px)': { padding: '8px 18px max(18px, env(safe-area-inset-bottom))', maxHeight: 'calc(100dvh - 32px)' } },
