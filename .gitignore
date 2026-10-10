@@ -6,3 +6,4 @@ logs/
 *.bak
 .DS_Store
 node_modules/
+web/dist/

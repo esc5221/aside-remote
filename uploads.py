@@ -41,7 +41,7 @@ def sniff(raw: bytes) -> tuple[str, str] | None:
 def save(raw: bytes, name: str | None = None) -> dict:
     kind = sniff(raw)
     if not kind:
-        raise ValueError("이미지 파일이 아닙니다 (jpg/png/gif/webp만 허용)")
+        raise ValueError("Choose a JPEG, PNG, GIF, or WebP image")
     mime, ext = kind
     digest = hashlib.sha256(raw).hexdigest()[:16]
     fid = f"{digest}.{ext}"

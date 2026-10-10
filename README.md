@@ -8,35 +8,57 @@ phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:879
                                                           ├─ aside mcp    persistent process = browser REPL
                                                           ├─ aside exec   PTY = agent runs
                                                           ├─ messages.jsonl tail = live streaming
-                                                          └─ aside session list = session status
+                                                          └─ aside session list = authenticated status
 ```
 
 What you get:
 
-- **Chat UI** for your Aside agent — conversation list (search, paging), streaming
-  answers with tool-activity folded into pills, image attachments (camera on phones),
-  markdown/code rendering, themes (light / dark / Linear dark / your own CSS),
-  Korean serif typography.
-- **Conversation deletion** — with confirmation; removes the conversation and its local
-  session files. Running conversations must be stopped first.
+- **Chat UI** for your Aside agent — conversation list (search, paging), live response
+  fragments with linked citations and folded tool activity, image attachments (camera on phones),
+  markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
+  Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
+- **Follow-up messages** — send during a response to queue the next turn. Queued
+  messages appear as conversation bubbles; their menu can edit, steer the current
+  response, or cancel the message. Stopping a response pauses its queue until resumed.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
-  work on any tab, and open a live preview that refreshes every 5 s (pause / refresh now).
+  work on any tab, and open a preview sheet that updates automatically and recovers
+  after connection failures. Tab lists and visible thumbnails also update automatically.
+- **Conversation deletion** — confirm before deleting a conversation and its local
+  session files. Running conversations must be stopped in Aside before deletion.
 - **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
-- Optional **push notification** (ntfy) when a run finishes.
+- **Native Web Push notifications** when a response finishes while this device is
+  away from the app, including iPhone Home Screen apps. Alerts show the completed
+  answer preview; long answers are truncated to fit the push payload. Enable them in Settings →
+  Notifications. Optional ntfy notifications remain available.
 
-The UI language is currently Korean. PRs welcome.
+The UI language is English. Conversation content keeps its original language.
+
+On iOS 16.4 or later, open the HTTPS site in Safari, add it to your Home Screen,
+then open that app and choose Settings → Notifications → Enable notifications.
+Allow the iOS permission prompt once. Alerts open the matching conversation and
+work while the app is in the background or closed. Keep the Mac bridge running
+and online. Focused devices do not receive completion alerts, and stopping a
+response in Aside Remote does not send one. Notification keys and subscriptions are
+created automatically in `~/.aside-remote/web-push` with owner-only file access;
+no Apple developer account or manual push credentials are needed.
+
+The app follows a ChatGPT iOS-inspired conversation layout with an anchored composer.
+[DESIGN.md](DESIGN.md) documents the reference, tokens, states, and responsive rules.
 
 ## Requirements
 
 - macOS with the [Aside](https://aside.dev) app installed and signed in
   (the bridge drives Aside's own CLI — it has no AI keys of its own)
 - Python ≥ 3.10
+- Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ and npm for building the frontend
 
 ## Quick start
 
 ```bash
 git clone <this repo> && cd aside-remote
 pip install -r requirements.txt
+npm ci
+npm run build
 python3 scripts/setup.py        # guided; --yes for defaults
 python3 server.py               # or let the wizard install a launchd service
 ```
@@ -51,7 +73,7 @@ that work well:
 
 **Tailscale / VPN** — simplest. `ASIDE_REMOTE_HOST=<tailscale-ip>` (or keep loopback
 and use `tailscale serve`), open `http://<mac>:8799`, paste the bearer token from
-`~/.aside-remote/token` once in 설정 (Settings).
+`~/.aside-remote/token` once in Settings.
 
 **Cloudflare Tunnel + Access** — what this repo is built around. Sketch:
 
@@ -126,57 +148,24 @@ chrome.* in repl       tabs.query allowed (that's where lastAccessed for tab ord
 
 An Aside update can invalidate any line above. If something breaks, check these first.
 
-## Themes
-
-Settings → 테마 picks a preset: system (follows the OS light/dark setting), light, dark,
-or Linear dark. The choice is stored per browser.
-
-For anything beyond the presets, create `~/.aside-remote/theme.css` on the Mac running the
-bridge (path overridable with `ASIDE_REMOTE_THEME_CSS`). It is served at `/theme.css` and
-loaded after the built-in styles, so it applies to every device and wins over the presets.
-No restart needed — reload the page.
-
-Every color is a CSS variable on `:root`; override those rather than component selectors,
-and your theme survives UI updates:
-
-```css
-/* ~/.aside-remote/theme.css */
-:root { --accent: #2f7d5b; --accent-dim: #2f7d5b; }        /* all presets */
-:root[data-theme="dark"] { --bg: #101418; --surface: #161b21; }  /* only the dark preset */
-```
-
-`<html data-theme>` always holds the theme actually drawn (`light`, `dark` or `linear`),
-never `auto`, so you can target one preset.
-
-```
-variable                     role
---bg --surface --surface2    page / cards / hover and chips
---composer                   input box
---text --dim --faint         primary / secondary / muted text
---line --line2               borders (strong / soft)
---accent --accent-dim        buttons, selection, links in tool chips
---bubble                     user message bubble
---err --ok --warn            status colors
---code-bg --code-fg --code-line --code-bar --code-dim     code blocks
---c-comment --c-key --c-str --c-num --c-fn --c-type --c-attr --c-meta   syntax highlight
---sbar --sbar-hi             scrollbar thumb
---font-body --font-ui        body font (also set from Settings) / UI font
-```
-
-New presets are welcome as PRs: add a `:root[data-theme="<id>"]` block that sets the
-variables above and an entry in `THEMES` in `web/index.html`. Please keep layout changes
-out of theme PRs.
-
 ## Development
 
 ```bash
-python3 server.py                      # dev run (uvicorn, port 8799)
-node tests/boot.test.mjs               # UI boot smoke test (needs: npm i jsdom)
+npm ci
+npm run build                         # type-check and build web/dist
+python3 server.py                      # serve the production UI on port 8799
+npm test                              # production-bundle UI smoke checks
+
+# Development frontend: run the bridge on port 8800 in another terminal
+ASIDE_REMOTE_PORT=8800 python3 server.py
+npm run dev                           # Vite on port 5173, proxies APIs and WS to 8800
 ```
 
-The web UI is a single dependency-free `web/index.html`. Vendored highlight.js is
-BSD-3 (see NOTICE).
+The frontend uses React, TypeScript, StyleX, and React Compiler with Vite.
+Source lives in `web/src`; the Python bridge serves the built `web/dist` files.
+Build the frontend before starting the bridge. Markdown and browser panels load
+on demand. Bundled third-party licenses are listed in NOTICE.
 
 ## License
 
-MIT
+MIT, except bundled third-party assets, which retain their licenses listed in NOTICE.

@@ -8,5 +8,19 @@ web/vendor/mermaid.min.js
   mermaid — MIT License
   https://github.com/mermaid-js/mermaid
 
-Web fonts are proxied at runtime from Google Fonts (SIL Open Font License)
-and cached locally; no font files are distributed with this repository.
+web/vendor/remixicon.symbol.svg
+  Remix Icon 4.9.1 — Remix Icon License v1.0 (January 2026)
+  Copyright (c) 2017–2026 Remix Design
+  https://github.com/Remix-Design/RemixIcon
+  Source: https://registry.npmjs.org/remixicon/-/remixicon-4.9.1.tgz
+  This sprite contains only the UI symbols used by Aside Remote.
+  Original symbol paths and view boxes are unchanged.
+  The full license is in web/vendor/remixicon.LICENSE.
+
+Wanted Sans is proxied at runtime from jsDelivr and cached locally (SIL Open Font License).
+
+web/src/assets/fonts/D2Coding-Regular.woff2 and D2Coding-Bold.woff2
+  D2Coding — SIL Open Font License 1.1
+  Copyright (c) 2015, NAVER Corporation
+  https://github.com/naver/d2codingfont
+  The full license is in web/src/assets/fonts/D2Coding.OFL.txt.

@@ -23,6 +23,8 @@ import json
 import logging
 import sqlite3
 import time
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 
 import config
 
@@ -38,10 +40,12 @@ _TOOL_STATE = json.dumps({
 })
 
 
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB, timeout=3.0)
-    c.execute("PRAGMA busy_timeout=3000")
-    return c
+@contextmanager
+def _conn() -> Iterator[sqlite3.Connection]:
+    with closing(sqlite3.connect(DB, timeout=3.0)) as c:
+        c.execute("PRAGMA busy_timeout=3000")
+        with c:
+            yield c
 
 
 def has_row(session_id: str) -> bool | None:
@@ -52,6 +56,16 @@ def has_row(session_id: str) -> bool | None:
                              (session_id,)).fetchone() is not None
     except Exception:
         return None
+
+
+def browser_targets(session_id: str) -> tuple[set[str], str | None]:
+    with _conn() as connection:
+        row = connection.execute("SELECT active_tab_target_id FROM sessions WHERE id=?", (session_id,)).fetchone()
+        targets = {item[0] for item in connection.execute(
+            "SELECT target_id FROM session_tabs WHERE session_id=?", (session_id,)) if item[0]}
+    if row and row[0]:
+        targets.add(row[0])
+    return targets, row[0] if row else None
 
 
 def persist(session_id: str) -> None:
