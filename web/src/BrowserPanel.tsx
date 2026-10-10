@@ -41,7 +41,6 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [selectedTab, setSelectedTab] = useState<BrowserTab>()
   const [query, setQuery] = useState("")
-  const [isLiveOnly, setIsLiveOnly] = useState(false)
   const [isLoadingTabs, setIsLoadingTabs] = useState(true)
   const [listError, setListError] = useState<string>()
   const [instruction, setInstruction] = useState("")
@@ -202,14 +201,13 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
     }
   }
 
-  const filteredTabs = tabs.filter((tab) => {
+  const availableTabs = tabs.filter((tab) => tab.loaded !== false)
+  const filteredTabs = availableTabs.filter((tab) => {
     const needle = query.trim().toLocaleLowerCase()
     return (
-      (!isLiveOnly || tab.loaded !== false) &&
       (!needle || tab.title.toLocaleLowerCase().includes(needle) || tab.url.toLocaleLowerCase().includes(needle))
     )
   })
-  const liveCount = tabs.filter((tab) => tab.loaded !== false).length
 
   return (
     <section ref={panelRef} {...stylex.props(styles.panel)} aria-label="Browser tabs">
@@ -296,13 +294,12 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
               <span {...stylex.props(styles.srOnly)}>Search tabs</span>
               <input {...stylex.props(styles.searchInput)} value={query} placeholder="Search tabs" onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <button {...stylex.props(styles.filterButton, isLiveOnly && styles.filterButtonActive)} type="button" aria-pressed={isLiveOnly} onClick={() => setIsLiveOnly((value) => !value)}>Live</button>
           </div>
-          <div {...stylex.props(styles.meta)}>{tabs.length} tabs · {liveCount} available</div>
+          <div {...stylex.props(styles.meta)}>{availableTabs.length} tabs</div>
           <div {...stylex.props(styles.list)}>
             {listError && <EmptyState title="Reconnecting…" detail={listError} />}
             {!listError && isLoadingTabs && tabs.length === 0 && <EmptyState title="Loading tabs…" detail="Chrome may take a moment to respond." />}
-            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={tabs.length ? "No matching tabs" : "No browser tabs"} detail={tabs.length ? "Try a different search or show all tabs." : "Open a tab here or in Aside."} />}
+            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={availableTabs.length ? "No matching tabs" : "No browser tabs"} detail={availableTabs.length ? "Try a different search." : "Open a tab here or in Aside."} />}
             {filteredTabs.map((tab) => (
               <button key={tab.targetId} data-browser-tab={tab.targetId} title={tab.title || "Untitled tab"} {...stylex.props(styles.tabRow)} type="button" onClick={() => setSelectedTab(tab)}>
                 <TabThumbnail tab={tab} request={request} sessionQuery={sessionQuery} />
@@ -434,8 +431,6 @@ const styles = stylex.create({
   searchRow: { display: "flex", gap: 8, padding: "14px 16px 8px" },
   searchBox: { minWidth: 0, flex: 1, height: 44, display: "flex", alignItems: "center", gap: 9, padding: "0 13px", borderRadius: 14, backgroundColor: tokens.surface, color: tokens.muted },
   searchInput: { minWidth: 0, width: "100%", height: "100%", padding: 0, borderWidth: 0, outline: 0, backgroundColor: "transparent", color: tokens.text, fontFamily: tokens.font, fontSize: '1rem' },
-  filterButton: { minWidth: 58, height: 44, padding: "0 15px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.muted, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
-  filterButtonActive: { backgroundColor: tokens.text, borderColor: tokens.text, color: tokens.canvas },
   meta: { padding: "2px 18px 9px", color: tokens.muted, fontSize: '0.75rem' },
   list: { minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain", padding: "0 10px 18px" },
   tabRow: { width: "100%", minHeight: 76, display: "flex", alignItems: "center", gap: 12, padding: "9px 8px", borderWidth: 0, borderRadius: 14, textAlign: "left", backgroundColor: { default: "transparent", ":hover": tokens.surface }, color: tokens.text, fontFamily: tokens.font },
