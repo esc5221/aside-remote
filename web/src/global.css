@@ -1,4 +1,18 @@
 @layer reset, stylex;
+@font-face {
+  font-family: "D2Coding";
+  src: url('./assets/fonts/D2Coding-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "D2Coding";
+  src: url('./assets/fonts/D2Coding-Bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 @layer reset {
   * { box-sizing: border-box; touch-action: pan-x pan-y; }
   html, body, #root { margin: 0; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
@@ -7,6 +21,7 @@
     --muted: #666666; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
     --control-border: #dcdcdc; --primary-hover: #333333; --selection: #d8eaff;
     --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #855b00; --syntax-title: #205cc9;
+    --font-code: "D2Coding", monospace; --code-line-height: 1.4;
     color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%; font-size: var(--text-size, 100%);
   }
   html[data-theme="dark"] {
@@ -16,7 +31,8 @@
     --syntax-keyword: #dda5df; --syntax-string: #a7d6a7; --syntax-number: #e5c07b; --syntax-title: #9ec4ff;
     color-scheme: dark;
   }
-  body, button, input, textarea, select, code, pre { font-family: "Wanted Sans Variable", "Wanted Sans", sans-serif; }
+  body, button, input, textarea, select { font-family: "Wanted Sans Variable", "Wanted Sans", sans-serif; }
+  code, pre { font-family: var(--font-code); }
   body { background: var(--canvas); color: var(--text); font-size: 1rem; -webkit-tap-highlight-color: transparent; }
   button, input, textarea, select { font-size: inherit; }
   button { cursor: pointer; }
@@ -40,8 +56,8 @@
   .markdown blockquote { border-left: 3px solid var(--border); margin: 16px 0; padding-left: 16px; color: var(--muted); }
   .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
   .markdown code { font-size: .9em; background: var(--bubble); padding: 2px 5px; border-radius: 5px; white-space: break-spaces; overflow-wrap: anywhere; }
-  .markdown pre { margin: 0; overflow-x: auto; padding: 16px; max-width: 100%; overscroll-behavior-x: contain; }
-  .markdown pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: 0.8125rem; line-height: 1.6; }
+  .markdown pre { margin: 0; overflow-x: auto; padding: 12px 16px; max-width: 100%; overscroll-behavior-x: contain; font-size: 0.8125rem; line-height: var(--code-line-height); tab-size: 4; }
+  .markdown pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: inherit; line-height: inherit; }
   .markdown table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
   .markdown td, .markdown th { padding: 11px 14px; border-bottom: 1px solid var(--border); text-align: left; min-width: 120px; }
   .markdown th { font-weight: 650; background: var(--surface); }

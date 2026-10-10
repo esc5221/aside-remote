@@ -180,7 +180,7 @@ const styles = stylex.create({
   activityBody: { borderLeftWidth: 1, borderLeftStyle: 'solid', borderLeftColor: tokens.border, marginLeft: 8, paddingLeft: 14, minWidth: 0 },
   step: { minWidth: 0, maxWidth: '100%' },
   toolTitle: { fontSize: '0.8125rem', color: tokens.text },
-  toolOutput: { fontSize: '0.75rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0, padding: 12, backgroundColor: tokens.surface, borderRadius: 12, maxHeight: 320, overflowY: 'auto' },
+  toolOutput: { fontSize: '0.75rem', lineHeight: 'var(--code-line-height)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0, padding: 12, backgroundColor: tokens.surface, borderRadius: 12, maxHeight: 320, overflowY: 'auto' },
   diagram: { padding: 16, overflowX: 'auto', maxWidth: '100%', backgroundColor: tokens.mediaWhite },
   working: { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: tokens.muted, paddingTop: 2 },
   pulse: { display: 'inline-block', width: 8, height: 8, backgroundColor: tokens.text, borderRadius: '50%' },
