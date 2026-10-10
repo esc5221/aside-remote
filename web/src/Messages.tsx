@@ -1,7 +1,8 @@
-import { Children, useEffect, useId, useRef, useState } from 'react';
+import { Children, createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { ChevronRight, Copy, Check, Code2 } from 'lucide-react';
@@ -10,6 +11,7 @@ import type { ChatMessage, LiveAssistant } from './types';
 import { tokens } from './tokens.stylex';
 import { CITATION_TITLE_PREFIX, formatCitations } from './citations';
 import { ICON_STROKE, IconButton, styles as ui } from './ui';
+import { VISUAL_MESSAGE_PREFIX, visualDocument, visualTheme } from './visual';
 
 const markdownPlugins = [remarkGfm];
 const highlightPlugins = [rehypeHighlight];
@@ -35,12 +37,42 @@ function CopyButton({ text, notify }: { text: string; notify: (text: string, kin
   }}>{isCopied ? <Check size={18} strokeWidth={ICON_STROKE} /> : <Copy size={18} strokeWidth={ICON_STROKE} />}</IconButton>;
 }
 
-function CodeBlock({ children, notify }: { children: ReactNode; notify: (text: string, kind?: 'success' | 'error') => void }) {
+function CodeBlock({ children, notify, isIncomplete }: { children: ReactNode; notify: (text: string, kind?: 'success' | 'error') => void; isIncomplete: boolean }) {
   const code = textContent(children);
   const child = Children.toArray(children)[0];
   const language = typeof child === 'object' && 'props' in child ? (child.props as { className?: string }).className?.match(/language-(\S+)/)?.[1] : undefined;
   if (language === 'mermaid') return <Diagram source={code} notify={notify} />;
+  if (language === 'visual' || language === 'html') return isIncomplete ? <p role="status" {...stylex.props(ui.muted)}>Building visual…</p> : <Visual source={code} notify={notify} />;
   return <div {...stylex.props(styles.code)}><div {...stylex.props(styles.codeHeader)}><span>{language || 'Text'}</span><CopyButton text={code} notify={notify} /></div><pre role="region" aria-label={(language || 'Text') + ' code'} tabIndex={0}>{children}</pre></div>;
+}
+
+function Visual({ source, notify }: { source: string; notify: (text: string, kind?: 'success' | 'error') => void }) {
+  const id = useId();
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(240);
+  const [isSource, setSource] = useState(false);
+  const srcDoc = useMemo(() => visualDocument(source, id), [source, id]);
+  useEffect(() => {
+    const sendTheme = () => frameRef.current?.contentWindow?.postMessage({ type: VISUAL_MESSAGE_PREFIX + 'theme', id, ...visualTheme() }, '*');
+    const receive = (event: MessageEvent<unknown>) => {
+      if (event.source !== frameRef.current?.contentWindow || typeof event.data !== 'object' || event.data === null) return;
+      const data = event.data;
+      if (Reflect.get(data, 'id') !== id) return;
+      const type = Reflect.get(data, 'type');
+      if (type === VISUAL_MESSAGE_PREFIX + 'ready') sendTheme();
+      const nextHeight = Reflect.get(data, 'height');
+      if (type === VISUAL_MESSAGE_PREFIX + 'resize' && typeof nextHeight === 'number' && Number.isFinite(nextHeight)) setHeight(Math.max(120, Math.min(12_000, nextHeight)));
+    };
+    window.addEventListener('message', receive);
+    const observer = new MutationObserver(sendTheme);
+    observer.observe(window.document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
+    sendTheme();
+    return () => { window.removeEventListener('message', receive); observer.disconnect(); };
+  }, [id]);
+  return <div {...stylex.props(styles.code)}><div {...stylex.props(styles.codeHeader)}><button type="button" {...stylex.props(ui.button)} aria-label={isSource ? 'Show visual preview' : 'Show visual source'} onClick={() => setSource(!isSource)}><Code2 size={16} aria-hidden="true" />{isSource ? 'Preview' : 'Source'}</button><CopyButton text={source} notify={notify} /></div>
+    <div hidden={isSource}><iframe ref={frameRef} title="HTML visual" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={srcDoc} style={{ height }} {...stylex.props(styles.visual)} /></div>
+    {isSource && <pre role="region" aria-label="Visual source" tabIndex={0}>{source}</pre>}
+  </div>;
 }
 
 type Mermaid = { initialize: (options: Record<string, unknown>) => void; render: (id: string, source: string) => Promise<{ svg: string }> };
@@ -106,19 +138,28 @@ export function Messages({ messages, pendingPrompt, pendingImages, liveAssistant
     </article>;
   })}
     {pendingPrompt !== undefined && <article aria-label="Sending message" {...stylex.props(styles.message, styles.user)}>{pendingImages.map(src => <img key={src} src={src} alt="Pending attachment" {...stylex.props(styles.image)} />)}<div {...stylex.props(styles.userText)}>{pendingPrompt}</div></article>}
-    {liveAssistant?.text && <motion.article key={liveAssistant.streamId} aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .16 }}><ResponseMarkdown text={formatCitations({ text: liveAssistant.text, sources, isStreaming: !liveAssistant.done })} notify={notify} onZoom={onZoom} /></motion.article>}
+    {liveAssistant?.text && <motion.article key={liveAssistant.streamId} aria-label="Response" aria-busy={!liveAssistant.done} data-streaming={!liveAssistant.done} {...stylex.props(styles.message)} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .16 }}><ResponseMarkdown text={formatCitations({ text: liveAssistant.text, sources, isStreaming: !liveAssistant.done })} isStreaming={!liveAssistant.done} notify={notify} onZoom={onZoom} /></motion.article>}
     <AnimatePresence>{isRunning && !liveAssistant?.text && <motion.div key="working" role="status" aria-label="Working" {...stylex.props(styles.working)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .12 }}><motion.span {...stylex.props(styles.pulse)} animate={{ opacity: shouldReduceMotion ? 1 : [.4, 1, .4] }} transition={{ duration: 1.2, repeat: shouldReduceMotion ? 0 : Infinity }} />Working…</motion.div>}</AnimatePresence>
   </div>;
 }
 
-function ResponseMarkdown({ text, notify, onZoom }: { text: string; notify: (text: string, kind?: 'success' | 'error') => void; onZoom: (src: string) => void }) {
-  return <div className="markdown"><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={highlightPlugins} components={{
-    pre: ({ children }) => <CodeBlock notify={notify}>{children}</CodeBlock>,
-    table: ({ children }) => <div role="region" aria-label="Response table" tabIndex={0} {...stylex.props(styles.tableScroll)}><table>{children}</table></div>,
-    img: ({ src, alt }) => <button {...stylex.props(styles.imageButton)} onClick={() => src && onZoom(src)}><img src={src} alt={alt || 'Attachment'} loading="lazy" /></button>,
-    a: ({ href, children, title }) => <a href={href} title={title} aria-label={title?.startsWith(CITATION_TITLE_PREFIX) ? title : undefined} {...stylex.props(title?.startsWith(CITATION_TITLE_PREFIX) && styles.citation)} target="_blank" rel="noopener noreferrer">{children}</a>,
-  }}>{text}</ReactMarkdown></div>;
+function ResponseMarkdown({ text, notify, onZoom, isStreaming = false }: { text: string; notify: (text: string, kind?: 'success' | 'error') => void; onZoom: (src: string) => void; isStreaming?: boolean }) {
+  return <MarkdownContext value={{ text, notify, onZoom, isStreaming }}><div className="markdown"><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={highlightPlugins} components={markdownComponents}>{text}</ReactMarkdown></div></MarkdownContext>;
 }
+
+const MarkdownContext = createContext<{ text: string; isStreaming: boolean; notify: (text: string, kind?: 'success' | 'error') => void; onZoom: (src: string) => void }>({ text: '', isStreaming: false, notify: () => {}, onZoom: () => {} });
+const markdownComponents: Components = {
+  pre: function MarkdownCode({ children, node }) {
+    const { text, notify, isStreaming } = useContext(MarkdownContext);
+    return <CodeBlock notify={notify} isIncomplete={isStreaming && !/(?:^|\n)\s*(?:`{3,}|~{3,})\s*$/.test(text.slice(node?.position?.start.offset, node?.position?.end.offset))}>{children}</CodeBlock>;
+  },
+  table: ({ children }) => <div role="region" aria-label="Response table" tabIndex={0} {...stylex.props(styles.tableScroll)}><table>{children}</table></div>,
+  img: function MarkdownImage({ src, alt }) {
+    const { onZoom } = useContext(MarkdownContext);
+    return <button {...stylex.props(styles.imageButton)} onClick={() => src && onZoom(src)}><img src={src} alt={alt || 'Attachment'} loading="lazy" /></button>;
+  },
+  a: ({ href, children, title }) => <a href={href} title={title} aria-label={title?.startsWith(CITATION_TITLE_PREFIX) ? title : undefined} {...stylex.props(title?.startsWith(CITATION_TITLE_PREFIX) && styles.citation)} target="_blank" rel="noopener noreferrer">{children}</a>,
+};
 
 const styles = stylex.create({
   messages: { display: 'flex', flexDirection: 'column', gap: 24, width: '100%', minWidth: 0, paddingTop: 22, paddingBottom: 24 },
@@ -130,6 +171,7 @@ const styles = stylex.create({
   code: { minWidth: 0, maxWidth: '100%', borderRadius: 16, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, overflow: 'hidden', marginTop: 16, marginBottom: 20, backgroundColor: tokens.surface },
   codeHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px 2px 16px', borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border, fontSize: '0.75rem', color: tokens.muted },
   codePadding: { padding: 16 },
+  visual: { display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, borderWidth: 0, backgroundColor: tokens.canvas },
   tableScroll: { overflowX: 'auto', maxWidth: '100%', minWidth: 0, overscrollBehaviorX: 'contain', marginTop: 16, marginBottom: 20 },
   imageButton: { borderWidth: 0, padding: 0, backgroundColor: 'transparent', display: 'block', maxWidth: '100%', cursor: 'zoom-in' },
   image: { display: 'block', maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 16, marginBottom: 8 },

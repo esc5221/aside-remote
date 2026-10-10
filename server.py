@@ -267,7 +267,7 @@ async def font_file(fid: str):
         raise HTTPException(404, "not found")
     data, ctype = got
     return Response(data, media_type=ctype,
-                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
+                    headers={"Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*"})
 
 
 # ------------------------------------------------------------------ 상태
