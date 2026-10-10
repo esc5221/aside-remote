@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { createPortal } from 'react-dom';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, Check, ChevronLeft, CircleAlert, Ellipsis, SquarePen, X } from 'lucide-react';
+import { ArrowDown, Check, CircleAlert, Ellipsis, Menu, SquarePen, X } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion, usePresence, useReducedMotion } from 'motion/react';
 import { useChat } from './chat';
 import { usePushNotifications } from './notifications';
@@ -215,7 +215,7 @@ export function App() {
     <main aria-label="Chat" {...stylex.props(styles.main)}>
       <div className="sr-only" role="status" aria-atomic="true">{announcement}</div>
       <header ref={headerRef} id="header" {...stylex.props(styles.header)}>
-        <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><ChevronLeft size={27} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{chat.isRunning ? 'Aside · Working…' : 'Aside'}</span></div></div>
+        <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><Menu size={24} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{chat.isRunning ? 'Aside · Working…' : 'Aside'}</span></div></div>
         <div {...stylex.props(ui.glass, styles.headerActions)}><IconButton label="New chat" style={{ height: 40 }} onClick={newChat}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
       </header>
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}

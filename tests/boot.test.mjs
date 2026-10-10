@@ -99,7 +99,7 @@ typeIn(draft, 'Do not resurrect this run');
 click(document.querySelector('button[aria-label="Send message"]'));
 await waitFor(() => lastSocketRequest('run'));
 const staleRun = lastSocketRequest('run');
-check('draft remains until the server accepts the run', draft.value === 'Do not resurrect this run');
+check('draft clears as soon as the run is sent', draft.value === '');
 click(document.querySelector('button[aria-label="New chat"]'));
 socket.emit({ op: 'run.started', requestId: staleRun.requestId, sessionId: 'STALESESSION01', runId: 'stale-run' });
 await tick(30);
@@ -118,7 +118,7 @@ await waitFor(() => location.pathname === '/c/NEWSESSION01');
 await waitFor(() => document.querySelector('[aria-label="Your message"]')?.textContent.includes('Accepted after disconnect'));
 check('request registry recovers a lost run.started event', location.pathname === '/c/NEWSESSION01');
 check('canonical fetch recovers the first message', document.querySelector('[aria-label="Your message"]')?.textContent.includes('Accepted after disconnect'));
-check('draft clears only after recovered acceptance', draft.value === '');
+check('draft stays clear after recovered acceptance', draft.value === '');
 
 click(document.querySelector('button[aria-label="New chat"]'));
 socket.emit({ op: 'run.done', sessionId: 'NEWSESSION01', runId: 'recovered-run' });

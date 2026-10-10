@@ -13,19 +13,29 @@ phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:879
 
 What you get:
 
-- **Chat UI** for your Aside agent — conversation list (search, paging), live response
+- **Chat UI** for your Aside agent — virtualized conversations and searchable history, live response
   fragments with linked citations and folded tool activity, image attachments (camera on phones),
   markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
-  Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
+  Wanted Sans, compact D2Coding source blocks, outline icons, and Motion sheet/drawer transitions.
+  The composer keeps multiline drafts and shows one send/stop control. Change the theme
+  in Settings → Appearance; the choice persists after reload.
+- **Interactive visuals** — HTML visual blocks render inside the conversation.
+  Switch between the working preview and its source without leaving the chat.
+- **Model selection** — choose the provider, model, and reasoning effort from the composer.
 - **Follow-up messages** — send during a response to queue the next turn. Queued
   messages appear as conversation bubbles; their menu can edit, steer the current
   response, or cancel the message. Stopping a response pauses its queue until resumed.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
   work on any tab, and open a preview sheet that updates automatically and recovers
-  after connection failures. Tab lists and visible thumbnails also update automatically.
+  after connection failures. A draggable picture-in-picture preview follows the current
+  session, remembers its position, and can be minimized or expanded. Open the page in
+  your own browser from either preview. Tab lists and visible thumbnails update automatically.
+- **Conversation controls** — pin, rename, share, or copy the conversation link and
+  session ID. Pinned conversations appear first; other conversations sort by recent activity.
 - **Conversation deletion** — confirm before deleting a conversation and its local
   session files. Running conversations must be stopped in Aside before deletion.
-- **URL routing** — `/c/<session>` deep links, browser back/forward works everywhere.
+- **Conversation routing** — `/c/<session>` deep links and automatic restoration of
+  the last conversation. Notification links load the matching conversation within the chat.
 - **Native Web Push notifications** when a response finishes while this device is
   away from the app, including iPhone Home Screen apps. Alerts show the completed
   answer preview; long answers are truncated to fit the push payload. Enable them in Settings →
@@ -44,6 +54,56 @@ no Apple developer account or manual push credentials are needed.
 
 The app follows a ChatGPT iOS-inspired conversation layout with an anchored composer.
 [DESIGN.md](DESIGN.md) documents the reference, tokens, states, and responsive rules.
+
+## Screenshots
+
+Actual app captures from a public demo conversation, using a phone-sized browser and
+an iPhone simulator. The demo opens a public page, runs browser tools, renders an
+interactive HTML diagram, and accepts a queued message through **Steer instead**.
+Click any image to view it at full size.
+
+<table>
+  <tr>
+    <th>Code and conversation</th>
+    <th>Interactive HTML visual</th>
+    <th>Visual source</th>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/code-response.png"><img src="docs/screenshots/code-response.png" width="240" alt="TypeScript response in a compact D2Coding code block above an interactive diagram"></a></td>
+    <td><a href="docs/screenshots/visual-preview.png"><img src="docs/screenshots/visual-preview.png" width="240" alt="HTML workflow diagram with Browse highlighted after tapping its next-step button"></a></td>
+    <td><a href="docs/screenshots/visual-source.png"><img src="docs/screenshots/visual-source.png" width="240" alt="HTML visual switched to its source with a Preview button"></a></td>
+  </tr>
+  <tr>
+    <th>Tool activity</th>
+    <th>Queue and steering</th>
+    <th>Edit a queued message</th>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/tool-activity.png"><img src="docs/screenshots/tool-activity.png" width="240" alt="Expanded browser actions showing completed steps and technical details"></a></td>
+    <td><a href="docs/screenshots/queue-steering.jpg"><img src="docs/screenshots/queue-steering.jpg" width="240" alt="Queued message menu with Edit message, Steer instead, and Cancel message"></a></td>
+    <td><a href="docs/screenshots/queue-edit.jpg"><img src="docs/screenshots/queue-edit.jpg" width="240" alt="Queued message being edited inline with Cancel and Save controls"></a></td>
+  </tr>
+  <tr>
+    <th>Conversation drawer</th>
+    <th>Conversation menu</th>
+    <th>Model picker</th>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/conversation-drawer.png"><img src="docs/screenshots/conversation-drawer.png" width="240" alt="Drawer searching for the pinned public README demo conversation"></a></td>
+    <td><a href="docs/screenshots/conversation-menu.png"><img src="docs/screenshots/conversation-menu.png" width="240" alt="Conversation menu with pin, rename, share, copy link, and copy session ID"></a></td>
+    <td><a href="docs/screenshots/model-picker.png"><img src="docs/screenshots/model-picker.png" width="240" alt="Model selection sheet with providers and reasoning effort"></a></td>
+  </tr>
+  <tr>
+    <th>Browser picture-in-picture</th>
+    <th>Browser sheet</th>
+    <th>Connection and notifications</th>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/browser-pip.png"><img src="docs/screenshots/browser-pip.png" width="240" alt="Live browser preview at the upper right of the conversation"></a></td>
+    <td><a href="docs/screenshots/browser-sheet.png"><img src="docs/screenshots/browser-sheet.png" width="240" alt="Browser sheet showing the page title, URL, preview, and Open in your browser action"></a></td>
+    <td><a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" width="240" alt="Settings showing bridge and browser connection status and Home Screen notification guidance"></a></td>
+  </tr>
+</table>
 
 ## Requirements
 
