@@ -47,8 +47,9 @@ export function useModelSelection(chat: UseChat, notify: (text: string, kind?: '
     const version = ++generation.current;
     mutation.current = true;
     setUpdating(true);
+    const config = configureModel(model, thinkingLevel ? { ...loaded.current, thinkingLevel } : loaded.current);
+    setCatalog({ ...loaded, current: config });
     try {
-      const config = configureModel(model, thinkingLevel ? { ...loaded.current, thinkingLevel } : loaded.current);
       const current = sessionId
         ? parseModelConfig(await (await request('/api/sessions/' + encodeURIComponent(sessionId) + '/model', {
           method: 'PUT', body: JSON.stringify(config),
@@ -60,7 +61,7 @@ export function useModelSelection(chat: UseChat, notify: (text: string, kind?: '
       localStorage.setItem(THINKING_STORAGE_KEY, current.thinkingLevel);
       return true;
     } catch {
-      if (version === generation.current) notify('Could not update model settings. Try again.', 'error');
+      if (version === generation.current) { setCatalog(loaded); notify('Could not update model settings. Try again.', 'error'); }
       return false;
     } finally { mutation.current = false; setUpdating(false); }
   }
@@ -102,7 +103,7 @@ export function ModelPicker({ selection, disabled, isRunning }: {
         <h3 {...stylex.props(styles.provider)}>{provider === 'openai-codex' ? 'OpenAI Codex' : provider === 'aside' ? 'Aside' : provider}</h3>
         {sortModels(selection.items.filter(model => model.provider === provider)).map(model => {
           const isSelected = model.id === selection.current?.modelId && model.provider === selection.current.provider;
-          return <button key={model.id} type="button" aria-label={model.name + ', ' + provider} aria-pressed={isSelected} disabled={selection.isUpdating || disabled} {...stylex.props(styles.option, isSelected && styles.selected)} onClick={() => { void selection.select(model).then(accepted => { if (accepted) close(); }); }}>
+          return <button key={model.id} type="button" aria-label={model.name + ', ' + provider} aria-pressed={isSelected} disabled={selection.isUpdating || disabled} {...stylex.props(styles.option, isSelected && styles.selected)} onClick={() => { close(); void selection.select(model); }}>
             <span {...stylex.props(styles.name)}>{model.name}</span>{isSelected && <Check size={19} strokeWidth={ICON_STROKE} aria-hidden="true" />}
           </button>;
         })}

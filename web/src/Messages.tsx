@@ -181,7 +181,7 @@ export function Messages({ chat, listRef, onAtBottomChange, notify, onZoom }: {
     if (group.kind === 'working') return <div role="status" aria-label="Working" {...stylex.props(styles.working)}><motion.span {...stylex.props(styles.pulse)} animate={{ opacity: shouldReduceMotion ? 1 : [.4, 1, .4] }} transition={{ duration: 1.2, repeat: shouldReduceMotion ? 0 : Infinity }} />Working…</div>;
     if (group.kind === 'queue') {
       const message = chat.queuedMessages[group.index];
-      return <QueuedBubble message={message} index={group.index} chat={chat} isEditing={editingId === message.id} isAnotherEditing={hasEditor && editingId !== message.id} editText={editText} onEditTextChange={setEditText} onEditingChange={isEditing => { if (isEditing) setEditText(message.prompt); setEditingId(isEditing ? message.id : undefined); }} />;
+      return <QueuedBubble message={message} index={group.index} chat={chat} isEditing={editingId === message.id} isAnotherEditing={hasEditor && editingId !== message.id} editText={editText} onEditTextChange={setEditText} onEditingChange={(isEditing, text) => { if (isEditing) setEditText(text ?? message.prompt); setEditingId(isEditing ? message.id : undefined); }} />;
     }
     if (group.kind === 'paused') return <div role="status" {...stylex.props(styles.working)}>Queue paused<button type="button" {...stylex.props(ui.button)} disabled={chat.isUpdatingQueue} onClick={() => { void chat.resumeQueue(); }}>Resume</button></div>;
     if (group.kind !== 'message') return;

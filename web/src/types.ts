@@ -116,6 +116,7 @@ export type UseChat = {
   isConnected: boolean
   isOpening: boolean
   isSending: boolean
+  isStopping: boolean
   isUpdatingQueue: boolean
   isQueuePaused: boolean
   queuedMessages: QueuedMessage[]

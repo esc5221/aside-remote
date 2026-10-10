@@ -9,7 +9,7 @@ import { ICON_STROKE } from './ui';
 const MENU_MARGIN = 8;
 const MENU_WIDTH = 268;
 
-export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing, editText, onEditTextChange, onEditingChange }: { message: QueuedMessage; index: number; chat: UseChat; isEditing: boolean; isAnotherEditing: boolean; editText: string; onEditTextChange: (text: string) => void; onEditingChange: (isEditing: boolean) => void }) {
+export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing, editText, onEditTextChange, onEditingChange }: { message: QueuedMessage; index: number; chat: UseChat; isEditing: boolean; isAnotherEditing: boolean; editText: string; onEditTextChange: (text: string) => void; onEditingChange: (isEditing: boolean, text?: string) => void }) {
   const menuId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -17,7 +17,8 @@ export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [isActing, setActing] = useState(false);
   const actionRef = useRef(false);
-  const isBusy = isActing || chat.isUpdatingQueue || message.status === 'sending' || isAnotherEditing;
+  const editRevisionRef = useRef(0);
+  const isBusy = isActing || message.status === 'sending' || isAnotherEditing;
   const isHeldElsewhere = message.isEditing && !isEditing;
   const label = `Queued message ${index + 1}`;
 
@@ -54,15 +55,21 @@ export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing
 
   async function runAction(action: 'edit' | 'cancel' | 'save' | 'steer' | 'delete') {
     if (isBusy || actionRef.current) return;
-    actionRef.current = true; setActing(true);
+    const revision = ++editRevisionRef.current;
     menuRef.current?.hidePopover();
+    if (action === 'edit') {
+      onEditingChange(true);
+      if (!await chat.beginEditQueuedMessage(message.id) && revision === editRevisionRef.current) onEditingChange(false);
+      return;
+    }
+    actionRef.current = true; setActing(true);
     try {
-      if (action === 'edit') {
-        if (await chat.beginEditQueuedMessage(message.id)) onEditingChange(true);
-      } else if (action === 'save') {
-        if (await chat.editQueuedMessage(message.id, editText, message.attachments)) onEditingChange(false);
+      if (action === 'save') {
+        onEditingChange(false);
+        if (!await chat.editQueuedMessage(message.id, editText, message.attachments)) onEditingChange(true, editText);
       } else if (action === 'cancel') {
-        if (await chat.cancelEditQueuedMessage(message.id)) onEditingChange(false);
+        onEditingChange(false);
+        if (!await chat.cancelEditQueuedMessage(message.id)) onEditingChange(true, editText);
       } else if (action === 'steer') {
         await chat.steerQueuedMessage(message.id);
       } else {
@@ -77,7 +84,7 @@ export function QueuedBubble({ message, index, chat, isEditing, isAnotherEditing
     </div>
     <div {...stylex.props(styles.bubble, isEditing && styles.editBubble)}>
       {message.attachments.length > 0 && <div {...stylex.props(styles.attachments)}>{message.attachments.map(attachment => <img key={attachment.id} src={attachment.url} alt={attachment.name} {...stylex.props(styles.image)} />)}</div>}
-      {isEditing ? <><textarea ref={inputRef} aria-label={`Edit ${label.toLowerCase()}`} rows={3} value={editText} disabled={isBusy} {...stylex.props(styles.editInput)} onChange={event => onEditTextChange(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); void runAction('cancel'); } }} /><div {...stylex.props(styles.editActions)}><button type="button" disabled={isBusy} {...stylex.props(styles.textButton)} onClick={() => { void runAction('cancel'); }}>Cancel</button><button type="button" disabled={isBusy || (!editText.trim() && !message.attachments.length)} {...stylex.props(styles.textButton, styles.saveButton)} onClick={() => { void runAction('save'); }}>{isActing ? 'Saving…' : 'Save'}</button></div></> : message.prompt}
+      {isEditing ? <><textarea ref={inputRef} aria-label={`Edit ${label.toLowerCase()}`} rows={3} value={editText} disabled={message.status === 'sending'} {...stylex.props(styles.editInput)} onChange={event => onEditTextChange(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); void runAction('cancel'); } }} /><div {...stylex.props(styles.editActions)}><button type="button" disabled={isBusy} {...stylex.props(styles.textButton)} onClick={() => { void runAction('cancel'); }}>Cancel</button><button type="button" disabled={isBusy || (!editText.trim() && !message.attachments.length)} {...stylex.props(styles.textButton, styles.saveButton)} onClick={() => { void runAction('save'); }}>{isActing ? 'Saving…' : 'Save'}</button></div></> : message.prompt}
     </div>
     {message.status === 'error' && <p role="alert" {...stylex.props(styles.error)}>{message.error || 'Could not send. Edit or try again.'}</p>}
     <div ref={menuRef} id={menuId} popover="auto" role="menu" aria-label={`Options for ${label.toLowerCase()}`} className={[stylex.props(styles.menu).className, 'queued-message-menu'].join(' ')} onToggle={event => setMenuOpen(event.currentTarget.matches(':popover-open'))} onKeyDown={event => {

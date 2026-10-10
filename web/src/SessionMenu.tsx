@@ -15,65 +15,54 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, notify 
   notify: (text: string, kind?: 'error' | 'success') => void;
 }) {
   const [details, setDetails] = useState<ReturnType<typeof parseSessionDetails>>();
-  const [error, setError] = useState(false);
-  const [isActing, setActing] = useState(false);
+  const session = chat.sessions.find(session => session.id === target.id);
   const url = new URL('/c/' + encodeURIComponent(target.id), location.origin).href;
-  const title = details?.title ?? target.title;
+  const title = session?.title ?? details?.title ?? target.title;
   const shareText = title + '\nSession ID: ' + target.id;
-  const isBusy = !details || isActing;
+  const isPinned = session?.isPinned ?? details?.isPinned ?? false;
   useEffect(() => {
+    if (session) return;
     const controller = new AbortController();
     void chat.request('/api/sessions/' + encodeURIComponent(target.id) + '/details', { signal: controller.signal })
       .then(response => response.json()).then(value => { if (!controller.signal.aborted) setDetails(parseSessionDetails(value)); })
-      .catch(() => { if (!controller.signal.aborted) setError(true); });
+      .catch(() => undefined);
     return () => controller.abort();
-  }, [target.id, chat.request]);
+  }, [target.id, chat.request, session?.id]);
 
   async function copy(text: string, message: string) {
-    setActing(true);
-    try { await navigator.clipboard.writeText(text); onClose(); notify(message, 'success'); }
+    onClose();
+    try { await navigator.clipboard.writeText(text); notify(message, 'success'); }
     catch { notify('Could not copy. Try again.', 'error'); }
-    finally { setActing(false); }
   }
   async function share() {
     if (!navigator.share) { await copy(shareText + '\n' + url, 'Session details copied.'); return; }
-    setActing(true);
-    try { await navigator.share({ title, text: shareText, url }); onClose(); }
+    onClose();
+    try { await navigator.share({ title, text: shareText, url }); }
     catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) notify('Could not share. Try copying the link.', 'error'); }
-    finally { setActing(false); }
-  }
-  async function togglePin() {
-    if (!details) return;
-    setActing(true);
-    try { if (await chat.updateSession(target.id, { isPinned: !details.isPinned })) onClose(); }
-    finally { setActing(false); }
   }
 
   return <PopoverMenu anchor={target.anchor} point={target.point} label="Conversation options" onClose={onClose}>
     <p {...stylex.props(styles.title)}>{title}</p>
-    {error && <p role="alert" {...stylex.props(ui.muted)}>Could not load conversation options.</p>}
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => void togglePin()}>{details?.isPinned ? <PinOff size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Pin size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{details?.isPinned ? 'Unpin conversation' : 'Pin conversation'}</span></button>
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => { onClose(); onRename({ id: target.id, title }); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Rename</span></button>
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => void share()}><Share2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Share session</span></button>
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => void copy(url, 'Session link copied.')}><Link size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Copy link</span></button>
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} disabled={isBusy} onClick={() => void copy(target.id, 'Session ID copied.')}><Copy size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Copy session ID</span></button>
-    <button type="button" role="menuitem" {...stylex.props(styles.action, ui.danger)} disabled={isBusy || details?.status === 'running' || (target.id === chat.sessionId && chat.isRunning)} onClick={() => { onClose(); onDelete({ id: target.id, title }); }}><Trash2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Delete conversation</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); void chat.updateSession(target.id, { isPinned: !isPinned }); }}>{isPinned ? <PinOff size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Pin size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isPinned ? 'Unpin conversation' : 'Pin conversation'}</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onRename({ id: target.id, title }); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Rename</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => void share()}><Share2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Share session</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => void copy(url, 'Session link copied.')}><Link size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Copy link</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => void copy(target.id, 'Session ID copied.')}><Copy size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Copy session ID</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action, ui.danger)} disabled={(session?.status ?? details?.status) === 'running' || (target.id === chat.sessionId && chat.isRunning)} onClick={() => { onClose(); onDelete({ id: target.id, title }); }}><Trash2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Delete conversation</span></button>
   </PopoverMenu>;
 }
 
 export function RenameConversation({ session, chat, onClose }: { session: Conversation; chat: UseChat; onClose: () => void }) {
   const [title, setTitle] = useState(session.title);
-  const [isSaving, setSaving] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const isMounted = useRef(true);
-  useEffect(() => { isMounted.current = true; input.current?.focus({ preventScroll: true }); return () => { isMounted.current = false; }; }, []);
+  useEffect(() => { input.current?.focus({ preventScroll: true }); }, []);
   return <form onSubmit={event => {
-    event.preventDefault(); if (!title.trim() || isSaving) return;
-    setSaving(true); void chat.updateSession(session.id, { title: title.trim() }).then(accepted => { if (accepted && isMounted.current) onClose(); }).finally(() => { if (isMounted.current) setSaving(false); });
+    event.preventDefault(); if (!title.trim()) return;
+    onClose(); void chat.updateSession(session.id, { title: title.trim() });
   }}>
-    <div {...stylex.props(styles.header)}><h2 {...stylex.props(ui.title)}>Rename conversation</h2><CloseButton onClick={() => { if (!isSaving) onClose(); }} /></div>
-    <input ref={input} autoFocus aria-label="Conversation name" maxLength={120} value={title} disabled={isSaving} {...stylex.props(ui.field)} onChange={event => setTitle(event.target.value)} />
-    <div {...stylex.props(styles.formActions)}><button type="button" {...stylex.props(ui.button)} disabled={isSaving} onClick={onClose}>Cancel</button><button type="submit" {...stylex.props(ui.button, ui.primary)} disabled={isSaving || !title.trim()}>{isSaving ? 'Saving…' : 'Save'}</button></div>
+    <div {...stylex.props(styles.header)}><h2 {...stylex.props(ui.title)}>Rename conversation</h2><CloseButton onClick={onClose} /></div>
+    <input ref={input} autoFocus aria-label="Conversation name" maxLength={120} value={title} {...stylex.props(ui.field)} onChange={event => setTitle(event.target.value)} />
+    <div {...stylex.props(styles.formActions)}><button type="button" {...stylex.props(ui.button)} onClick={onClose}>Cancel</button><button type="submit" {...stylex.props(ui.button, ui.primary)} disabled={!title.trim()}>Save</button></div>
   </form>;
 }
 

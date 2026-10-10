@@ -63,7 +63,7 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
   const hasUploadPending = attachments.some(attachment => !attachment.upload && !attachment.hasError);
   const hasInput = draft.length > 0 || attachments.length > 0;
   const hasDraftContent = draft.trim().length > 0 || attachments.some(attachment => attachment.upload);
-  const canSubmit = chat.isReady && !chat.authError && !chat.isOpening && !chat.isSending && !chat.isUpdatingQueue && !modelSelection.isUpdating && (!!chat.sessionId || !!modelSelection.current) && !hasUploadPending && hasDraftContent;
+  const canSubmit = chat.isReady && !chat.authError && !chat.isOpening && !modelSelection.isUpdating && (!!chat.sessionId || !!modelSelection.current) && !hasUploadPending && hasDraftContent;
   const shouldQueue = chat.isRunning || chat.queuedMessages.length > 0;
   function flushPreviewRevokes() { pendingPreviewRevokesRef.current.splice(0).forEach(preview => URL.revokeObjectURL(preview)); }
 
@@ -96,9 +96,11 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     const sentAttachments = attachmentRef.current;
     const uploads = sentAttachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []);
     draftRef.current = ''; setDraft('');
+    attachmentRef.current = []; setAttachments([]);
     const accepted = shouldQueue ? await chat.queue(sentDraft, uploads) : await chat.send(sentDraft, uploads, modelSelection.current);
     if (sentRevision !== revisionRef.current) return;
     if (!accepted) {
+      attachmentRef.current = [...sentAttachments, ...attachmentRef.current].slice(0, MAX_ATTACHMENTS); setAttachments(attachmentRef.current);
       if (sentDraft) {
         const restoredDraft = draftRef.current ? sentDraft + '\n\n' + draftRef.current : sentDraft;
         draftRef.current = restoredDraft; setDraft(restoredDraft);
@@ -129,7 +131,7 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
       <IconButton label="Add photos" style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
       <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input, isExpanded && styles.expandedInput)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
       <div {...stylex.props(styles.submitActions)}>{chat.isRunning && !hasInput
-        ? <motion.button key="stop" type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onPointerDown={event => { isTouchSubmissionRef.current = false; if (event.pointerType === 'touch') event.preventDefault(); }} onClick={event => { if (event.detail === 0 || !isTouchSubmissionRef.current) void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>
+        ? <motion.button key="stop" type="button" aria-label={chat.isStopping ? 'Stopping response' : 'Stop response'} title="Stop response" disabled={chat.isStopping} aria-busy={chat.isStopping} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onPointerDown={event => { isTouchSubmissionRef.current = false; if (event.pointerType === 'touch') event.preventDefault(); }} onClick={event => { if (event.detail === 0 || !isTouchSubmissionRef.current) void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>
         : <motion.button key="send" type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)} onPointerDown={event => { isTouchSubmissionRef.current = event.pointerType === 'touch'; if (isTouchSubmissionRef.current) { event.preventDefault(); void submit(); } }} onClick={event => { if (isTouchSubmissionRef.current && event.detail > 0) event.preventDefault(); }}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={event => { void addFiles([...event.target.files || []]); event.target.value = ''; }} />
     </form>

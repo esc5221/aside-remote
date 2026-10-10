@@ -48,6 +48,8 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const [instruction, setInstruction] = useState("")
   const [isOpenFormVisible, setIsOpenFormVisible] = useState(false)
   const [newTabUrl, setNewTabUrl] = useState("")
+  const [openingTabs, setOpeningTabs] = useState<{ id: string; url: string }[]>([])
+  const closingTabsRef = useRef(new Set<string>())
   const [previewUrl, setPreviewUrl] = useState<string>()
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle")
   const [isPreviewExpanded, setPreviewExpanded] = useState(false)
@@ -103,7 +105,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
       const value: unknown = await response.json()
       if (signal?.aborted || generation !== listGenerationRef.current) return
       if (!isTabResponse(value)) throw new Error("Invalid tab list.")
-      const sortedTabs = [...value.tabs].sort(
+      const sortedTabs = value.tabs.filter(tab => !closingTabsRef.current.has(tab.targetId)).sort(
         (first, second) => (second.lastAccessed ?? 0) - (first.lastAccessed ?? 0),
       )
       setTabs(sortedTabs)
@@ -174,8 +176,16 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   }, [])
 
   const runTabAction = async (action: "focus" | "open" | "close") => {
-    if (!selectedTab || busyAction) return
-    setBusyAction(action)
+    if (!selectedTab || busyAction || closingTabsRef.current.has(selectedTab.targetId)) return
+    if (action !== "close") setBusyAction(action)
+    const target = selectedTab
+    if (action === "close") {
+      closingTabsRef.current.add(target.targetId)
+      listGenerationRef.current += 1
+      setTabs(current => current.filter(tab => tab.targetId !== target.targetId))
+      setSelectedTab(undefined)
+      setIsConfirmingClose(false)
+    }
     try {
       if (action === "focus") {
         await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}/focus?${sessionQuery.slice(1)}`, { method: "POST" })
@@ -190,40 +200,45 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
         } catch (error) {
           if (getErrorStatus(error) !== 404) throw error
         }
-        listGenerationRef.current += 1
-        setTabs((current) => current.filter((tab) => tab.targetId !== selectedTab.targetId))
         notify("Tab closed.", "success")
-        setSelectedTab(undefined)
-        await loadTabs()
       }
     } catch (error) {
+      if (action === "close") {
+        setTabs(current => [...current.filter(tab => tab.targetId !== target.targetId), target])
+        setSelectedTab(current => current ?? target)
+      }
       const status = getErrorStatus(error)
       if (status === 404) setPreviewStatus("missing")
       else if (status === 409) setPreviewStatus("asleep")
       notify(getErrorMessage(error), "error")
     } finally {
-      setBusyAction(undefined)
+      closingTabsRef.current.delete(target.targetId)
+      if (action !== "close") setBusyAction(undefined)
+      if (action === "close") void loadTabs()
     }
   }
 
   const openNewTab = async () => {
-    if (busyAction) return
-    const url = getWebUrl(newTabUrl)
+    const enteredUrl = newTabUrl
+    const url = getWebUrl(enteredUrl)
     if (!url) {
       notify("Enter a full http:// or https:// URL.", "error")
       return
     }
-    setBusyAction("new")
+    const id = crypto.randomUUID()
+    setOpeningTabs(current => [...current, { id, url }])
+    setNewTabUrl("")
+    setIsOpenFormVisible(false)
     try {
       await request(`/api/tabs?${sessionQuery.slice(1)}`, { method: "POST", body: JSON.stringify({ url }) })
-      setNewTabUrl("")
-      setIsOpenFormVisible(false)
       notify("Tab opened.", "success")
       await loadTabs()
     } catch (error) {
+      setNewTabUrl(current => current || enteredUrl)
+      setIsOpenFormVisible(true)
       notify(getErrorMessage(error), "error")
     } finally {
-      setBusyAction(undefined)
+      setOpeningTabs(current => current.filter(tab => tab.id !== id))
     }
   }
 
@@ -322,11 +337,12 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
               <input ref={searchInputRef} {...stylex.props(styles.searchInput)} value={query} placeholder="Search tabs" onChange={(event) => setQuery(event.target.value)} />
             </label>
           </div>
-          <div {...stylex.props(styles.meta)}>{availableTabs.length} tabs</div>
+          <div {...stylex.props(styles.meta)}>{availableTabs.length + openingTabs.length} tabs</div>
           <div {...stylex.props(styles.list)}>
             {listError && <EmptyState title="Reconnecting…" detail={listError} />}
             {!listError && isLoadingTabs && tabs.length === 0 && <EmptyState title="Loading tabs…" detail="Chrome may take a moment to respond." />}
-            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={availableTabs.length ? "No matching tabs" : "No browser tabs"} detail={availableTabs.length ? "Try a different search." : "Open a tab here or in Aside."} />}
+            {!listError && !isLoadingTabs && filteredTabs.length === 0 && openingTabs.length === 0 && <EmptyState title={availableTabs.length ? "No matching tabs" : "No browser tabs"} detail={availableTabs.length ? "Try a different search." : "Open a tab here or in Aside."} />}
+            {openingTabs.map(tab => <div key={tab.id} role="status" {...stylex.props(styles.tabRow)}><Globe2 size={ICON_SIZE} aria-hidden="true" /><span {...stylex.props(styles.tabCopy)}><span {...stylex.props(styles.rowTitle)}>{new URL(tab.url).hostname}</span><span {...stylex.props(styles.rowMeta)}>Opening…</span></span></div>)}
             {filteredTabs.map((tab) => (
               <button key={tab.targetId} data-browser-tab={tab.targetId} title={tab.title || "Untitled tab"} {...stylex.props(styles.tabRow)} type="button" onClick={() => setSelectedTab(tab)}>
                 <TabThumbnail tab={tab} request={request} sessionQuery={sessionQuery} />
@@ -349,7 +365,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
                     onChange={(event) => setNewTabUrl(event.target.value)}
                     autoFocus
                   />
-                  <button {...stylex.props(styles.openButton)} type="submit" disabled={busyAction === "new"}>Open</button>
+                  <button {...stylex.props(styles.openButton)} type="submit">Open</button>
                 </div>
                 <button {...stylex.props(styles.textButton)} type="button" onClick={() => setIsOpenFormVisible(false)}>Cancel</button>
               </form>

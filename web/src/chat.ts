@@ -53,6 +53,8 @@ type ActiveLiveAssistant = LiveAssistant & {
 }
 
 type QueueResponse = { items: QueuedMessage[]; isPaused: boolean }
+type QueueMutation = { id: string; sessionId?: string; generation: number; update: (state: QueueResponse) => QueueResponse }
+type SessionSettings = { title?: string; isPinned?: boolean }
 
 type SocketMessage = {
   op: string
@@ -194,8 +196,9 @@ export const useChat = (): UseChat => {
   const [isConnected, setIsConnected] = useState(false)
   const [isOpening, setIsOpening] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [stoppingSessionId, setStoppingSessionId] = useState<string>()
   const [isUpdatingQueue, setIsUpdatingQueue] = useState(false)
-  const [queueState, setQueueState] = useState<QueueResponse & { sessionId: string }>()
+  const [queueState, setQueueState] = useState<QueueResponse & { sessionId?: string }>()
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [authError, setAuthError] = useState<string>()
@@ -240,6 +243,15 @@ export const useChat = (): UseChat => {
   const isUnmountedRef = useRef(false)
   const queueMutationRef = useRef<string | undefined>(undefined)
   const queueRevisionRef = useRef(0)
+  const queueRequestRef = useRef<AbortController | undefined>(undefined)
+  const queueBaseRef = useRef<(QueueResponse & { sessionId?: string }) | undefined>(undefined)
+  const queueMutationsRef = useRef<QueueMutation[]>([])
+  const queueDeliveryRef = useRef<Promise<unknown>>(Promise.resolve())
+  const activeDeliveryRef = useRef<Promise<boolean> | undefined>(undefined)
+  const sessionMutationsRef = useRef<{ key: string; id: string; settings: SessionSettings }[]>([])
+  const sessionBasesRef = useRef(new Map<string, ChatSession>())
+  const sessionWritesRef = useRef(new Map<string, Promise<unknown>>())
+  const deletingSessionsRef = useRef(new Set<string>())
   const followupRequestRef = useRef<{ key: string; id: string } | undefined>(undefined)
   const heldQueueEditRef = useRef<{ sessionId: string; id: string } | undefined>(undefined)
 
@@ -327,6 +339,26 @@ export const useChat = (): UseChat => {
     }).catch(() => undefined)
   }, [request])
 
+  const publishQueue = useCallback(() => {
+    const selectedSessionId = sessionIdRef.current
+    const base: QueueResponse = queueBaseRef.current && queueBaseRef.current.sessionId === selectedSessionId
+      ? queueBaseRef.current : { items: [], isPaused: false }
+    const next = queueMutationsRef.current
+      .filter(mutation => mutation.sessionId === selectedSessionId && mutation.generation === openGenerationRef.current)
+      .reduce((state, mutation) => mutation.update(state), base)
+    setQueueState({ ...next, sessionId: selectedSessionId })
+  }, [])
+
+  const bindStartingQueue = useCallback(({ sessionId, previousGeneration, generation }: { sessionId: string; previousGeneration: number; generation: number }) => {
+    queueMutationsRef.current.forEach(mutation => {
+      if (mutation.sessionId === undefined && mutation.generation === previousGeneration) {
+        mutation.sessionId = sessionId
+        mutation.generation = generation
+      }
+    })
+    publishQueue()
+  }, [publishQueue])
+
   const refreshQueue = useCallback(async (signal?: AbortSignal) => {
     const selectedSessionId = sessionIdRef.current
     if (!selectedSessionId || queueMutationRef.current) return
@@ -337,12 +369,13 @@ export const useChat = (): UseChat => {
       const result = parseQueueResponse(await response.json())
       if (!signal?.aborted && !isUnmountedRef.current && generation === openGenerationRef.current &&
           selectedSessionId === sessionIdRef.current && revision === queueRevisionRef.current && !queueMutationRef.current) {
-        setQueueState({ ...result, sessionId: selectedSessionId })
+        queueBaseRef.current = { ...result, sessionId: selectedSessionId }
+        publishQueue()
       }
     } catch {
       // Keep the last queue until the next refresh or connection recovery.
     }
-  }, [request])
+  }, [publishQueue, request])
 
   const sendSocket = useCallback((payload: object) => {
     const socket = socketRef.current
@@ -424,13 +457,14 @@ export const useChat = (): UseChat => {
                 : []
           const byId = new Map(previous.map((item) => [item.id, item]))
           const existingById = new Map(current.map((item) => [item.id, item]))
-          result.items.forEach((item) => {
+          result.items.filter(item => !deletingSessionsRef.current.has(item.id)).forEach((item) => {
             const existing = existingById.get(item.id)
-            byId.set(item.id, existing && existing.mtime > item.mtime
-              ? { ...item, mtime: existing.mtime, updatedAt: existing.updatedAt }
-              : item)
+            const settings = sessionMutationsRef.current.filter(mutation => mutation.id === item.id)
+              .reduce<SessionSettings>((current, mutation) => ({ ...current, ...mutation.settings }), {})
+            byId.set(item.id, { ...(existing && existing.mtime > item.mtime
+              ? { ...item, mtime: existing.mtime, updatedAt: existing.updatedAt } : item), ...settings })
           })
-          return [...byId.values()].sort(compareSessions)
+          return [...byId.values()].filter(item => !deletingSessionsRef.current.has(item.id)).sort(compareSessions)
         })
         const nextCursor =
           mode === "refresh" && hadSessions && result.nextCursor ? cursorBefore : result.nextCursor
@@ -474,6 +508,7 @@ export const useChat = (): UseChat => {
   const openSession = useCallback(
     async (selectedSessionId: string, shouldNavigate = true) => {
       releaseQueueEdit()
+      queueRequestRef.current?.abort()
       cancelPendingRequests()
       const previousSessionId = sessionIdRef.current
       if (previousSessionId && previousSessionId !== selectedSessionId) {
@@ -548,6 +583,7 @@ export const useChat = (): UseChat => {
   }, [openSession])
 
   const newChat = useCallback(() => {
+    queueRequestRef.current?.abort()
     releaseQueueEdit()
     cancelPendingRequests()
     const previousSessionId = sessionIdRef.current
@@ -556,6 +592,8 @@ export const useChat = (): UseChat => {
     retireLiveAssistant()
     sessionIdRef.current = undefined
     setSessionId(undefined)
+    queueBaseRef.current = undefined
+    setQueueState(undefined)
     messagesRef.current = []
     setMessages([])
     setPendingPrompt(undefined)
@@ -610,6 +648,7 @@ export const useChat = (): UseChat => {
         const generation = ++openGenerationRef.current
         sessionIdRef.current = acceptedSessionId
         setSessionId(acceptedSessionId)
+        bindStartingQueue({ sessionId: acceptedSessionId, previousGeneration: accepted.generation, generation })
         localStorage.setItem(LAST_SESSION_KEY, acceptedSessionId)
         localStorage.setItem(LAST_SESSION_MODE_KEY, "session")
         nextSeqRef.current = 0
@@ -626,7 +665,7 @@ export const useChat = (): UseChat => {
       }
       void refreshSessions()
     },
-    [fetchMessages, refreshSessions, settlePendingRequest, subscribe],
+    [bindStartingQueue, fetchMessages, refreshSessions, settlePendingRequest, subscribe],
   )
 
   const recoverPendingRequest = useCallback(
@@ -952,137 +991,162 @@ export const useChat = (): UseChat => {
       pendingAttachmentsRef.current = attachments
       pendingStartSeqRef.current = nextSeqRef.current
       setIsSending(true)
-      if (socket?.readyState === WebSocket.OPEN) {
-        return new Promise<boolean>((resolve) => {
-          pendingRequestsRef.current.set(requestId, {
-            prompt,
-            sessionId: selectedSessionId,
-            generation,
-            resolve,
+      const delivery = deliver()
+      activeDeliveryRef.current = delivery
+      return delivery
+
+      async function deliver() {
+        if (socket?.readyState === WebSocket.OPEN) {
+          return new Promise<boolean>((resolve) => {
+            pendingRequestsRef.current.set(requestId, {
+              prompt,
+              sessionId: selectedSessionId,
+              generation,
+              resolve,
+            })
+            socket.send(
+              JSON.stringify(
+                selectedSessionId
+                  ? {
+                      op: "continue",
+                      requestId,
+                      sessionId: selectedSessionId,
+                      prompt: text,
+                      attachments: payloadAttachments,
+                    }
+                  : { op: "run", requestId, prompt: text, attachments: payloadAttachments, ...modelOptions },
+              ),
+            )
           })
-          socket.send(
-            JSON.stringify(
-              selectedSessionId
-                ? {
-                    op: "continue",
-                    requestId,
-                    sessionId: selectedSessionId,
-                    prompt: text,
-                    attachments: payloadAttachments,
-                  }
-                : { op: "run", requestId, prompt: text, attachments: payloadAttachments, ...modelOptions },
-            ),
+        }
+        try {
+          const path = selectedSessionId
+            ? `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`
+            : "/api/runs"
+          const result = await api(path, parseStartedRun, {
+            method: "POST",
+            body: JSON.stringify({ prompt: text, attachments: payloadAttachments, ...modelOptions }),
+          })
+          if (
+            activeSendRef.current !== requestId ||
+            generation !== openGenerationRef.current ||
+            sessionIdRef.current !== selectedSessionId
+          ) {
+            return false
+          }
+          if (!selectedSessionId) {
+            sessionIdRef.current = result.sessionId
+            setSessionId(result.sessionId)
+            bindStartingQueue({ sessionId: result.sessionId, previousGeneration: generation, generation })
+            localStorage.setItem(LAST_SESSION_KEY, result.sessionId)
+            localStorage.setItem(LAST_SESSION_MODE_KEY, "session")
+            subscribe(result.sessionId)
+            history.pushState({}, "", `/c/${encodeURIComponent(result.sessionId)}`)
+          }
+          activeRunIdsRef.current.set(result.sessionId, result.runId)
+          setRunningSessionIds((current) =>
+            current.includes(result.sessionId) ? current : [...current, result.sessionId],
           )
-        })
-      }
-      try {
-        const path = selectedSessionId
-          ? `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`
-          : "/api/runs"
-        const result = await api(path, parseStartedRun, {
-          method: "POST",
-          body: JSON.stringify({ prompt: text, attachments: payloadAttachments, ...modelOptions }),
-        })
-        if (
-          activeSendRef.current !== requestId ||
-          generation !== openGenerationRef.current ||
-          sessionIdRef.current !== selectedSessionId
-        ) {
+          void refreshSessions()
+          return true
+        } catch (error) {
+          if (
+            activeSendRef.current === requestId &&
+            generation === openGenerationRef.current &&
+            sessionIdRef.current === selectedSessionId
+          ) {
+            setPendingPrompt(undefined)
+            pendingPromptRef.current = undefined
+            setPendingAttachments([])
+            pendingAttachmentsRef.current = []
+            pushToast(`Couldn't send the message. ${getErrorMessage(error)}`)
+          }
           return false
-        }
-        if (!selectedSessionId) {
-          sessionIdRef.current = result.sessionId
-          setSessionId(result.sessionId)
-          localStorage.setItem(LAST_SESSION_KEY, result.sessionId)
-          localStorage.setItem(LAST_SESSION_MODE_KEY, "session")
-          subscribe(result.sessionId)
-          history.pushState({}, "", `/c/${encodeURIComponent(result.sessionId)}`)
-        }
-        activeRunIdsRef.current.set(result.sessionId, result.runId)
-        setRunningSessionIds((current) =>
-          current.includes(result.sessionId) ? current : [...current, result.sessionId],
-        )
-        void refreshSessions()
-        return true
-      } catch (error) {
-        if (
-          activeSendRef.current === requestId &&
-          generation === openGenerationRef.current &&
-          sessionIdRef.current === selectedSessionId
-        ) {
-          setPendingPrompt(undefined)
-          pendingPromptRef.current = undefined
-          setPendingAttachments([])
-          pendingAttachmentsRef.current = []
-          pushToast(`Couldn't send the message. ${getErrorMessage(error)}`)
-        }
-        return false
-      } finally {
-        if (activeSendRef.current === requestId) {
-          activeSendRef.current = undefined
-          setIsSending(false)
+        } finally {
+          if (activeSendRef.current === requestId) {
+            activeSendRef.current = undefined
+            setIsSending(false)
+          }
         }
       }
     },
-    [api, pushToast, refreshSessions, subscribe],
+    [api, bindStartingQueue, pushToast, refreshSessions, subscribe],
   )
 
-  const mutateQueue = useCallback(async ({ suffix, method, body }: {
-    suffix: string; method: string; body?: object;
+  const mutateQueue = useCallback(({ suffix, method, body, update }: {
+    suffix: string; method: string; body?: object; update: (state: QueueResponse) => QueueResponse;
   }) => {
     const selectedSessionId = sessionIdRef.current
-    if (!selectedSessionId || queueMutationRef.current || activeSendRef.current) return false
+    if (!selectedSessionId && !activeSendRef.current) return Promise.resolve(false)
     const generation = openGenerationRef.current
     const mutationId = createRequestId()
+    const mutation = { id: mutationId, sessionId: selectedSessionId, generation, update }
+    queueMutationsRef.current.push(mutation)
     queueMutationRef.current = mutationId
     queueRevisionRef.current += 1
     setIsUpdatingQueue(true)
-    try {
-      const response = await request(`/api/sessions/${encodeURIComponent(selectedSessionId)}/${suffix}`, {
-        method, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS),
-      })
-      const value: unknown = await response.json()
-      const result = parseQueueResponse(value)
-      if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
-        setQueueState({ ...result, sessionId: selectedSessionId })
-        const steeredItemId = suffix.match(/^followups\/([^/]+)\/steer$/)?.[1]
-        if (steeredItemId && result.items.some(item => item.id === steeredItemId)) {
-          pushToast("The message could not be delivered. It is still in your queue.")
-          return false
+    publishQueue()
+    const startingRun = activeSendRef.current ? activeDeliveryRef.current : undefined
+    const delivery = queueDeliveryRef.current.then(async () => {
+      let selectedSessionId = mutation.sessionId
+      let generation = mutation.generation
+      try {
+        if (startingRun && !await startingRun) throw new Error("The response could not start. Try sending this message again.")
+        selectedSessionId = mutation.sessionId
+        generation = mutation.generation
+        if (!selectedSessionId || isUnmountedRef.current || generation !== openGenerationRef.current || selectedSessionId !== sessionIdRef.current) return false
+        const controller = new AbortController()
+        queueRequestRef.current = controller
+        const response = await request(`/api/sessions/${encodeURIComponent(selectedSessionId)}/${suffix}`, {
+          method, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS)]),
+        })
+        const result = parseQueueResponse(await response.json())
+        if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
+          queueBaseRef.current = { ...result, sessionId: selectedSessionId }
+          const steeredItemId = suffix.match(/^followups\/([^/]+)\/steer$/)?.[1]
+          if (steeredItemId && result.items.some(item => item.id === decodeURIComponent(steeredItemId))) {
+            pushToast("The message could not be delivered. It is still in your queue.")
+            return false
+          }
+          if (steeredItemId) {
+            const deliveredSessionId = selectedSessionId
+            setRunningSessionIds(current => current.includes(deliveredSessionId) ? current : [...current, deliveredSessionId])
+            void fetchMessages(selectedSessionId, generation).catch(() => undefined)
+          }
         }
-        if (suffix.endsWith("/steer")) {
-          setRunningSessionIds((current) => current.includes(selectedSessionId) ? current : [...current, selectedSessionId])
-          void fetchMessages(selectedSessionId, generation).catch(() => undefined)
+        return true
+      } catch (error) {
+        if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
+          pushToast(`Couldn't update the message. ${getErrorMessage(error)}`)
         }
-      }
-      return true
-    } catch (error) {
-      if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
-        pushToast(`Couldn't update the message. ${getErrorMessage(error)}`)
-      }
-      return false
-    } finally {
-      if (queueMutationRef.current === mutationId) {
-        queueMutationRef.current = undefined
+        return false
+      } finally {
+        queueMutationsRef.current = queueMutationsRef.current.filter(mutation => mutation.id !== mutationId)
+        queueMutationRef.current = queueMutationsRef.current.at(-1)?.id
         queueRevisionRef.current += 1
         if (!isUnmountedRef.current) {
-          setIsUpdatingQueue(false)
-          void refreshQueue()
+          setIsUpdatingQueue(queueMutationsRef.current.length > 0)
+          publishQueue()
+          if (!queueMutationRef.current) void refreshQueue()
         }
       }
-    }
-  }, [fetchMessages, pushToast, refreshQueue, request])
+    })
+    queueDeliveryRef.current = delivery
+    return delivery
+  }, [fetchMessages, publishQueue, pushToast, refreshQueue, request])
 
   const queue = useCallback(async (prompt: string, attachments: UploadAttachment[] = []) => {
     if (!prompt.trim() && attachments.length === 0) return false
     const payloadAttachments = attachments.map(({ id, name }) => ({ id, name }))
     const key = JSON.stringify({ sessionId: sessionIdRef.current, prompt, attachments: payloadAttachments })
     if (followupRequestRef.current?.key !== key) followupRequestRef.current = { key, id: createRequestId() }
+    const id = followupRequestRef.current.id
+    followupRequestRef.current = undefined
     const accepted = await mutateQueue({
-      suffix: "followups", method: "POST",
-      body: { id: followupRequestRef.current.id, prompt: prompt.trim(), attachments: payloadAttachments },
+      suffix: "followups", method: "POST", body: { id, prompt: prompt.trim(), attachments: payloadAttachments },
+      update: state => ({ ...state, items: [...state.items.filter(item => item.id !== id), { id, prompt: prompt.trim(), attachments, status: "queued" }] }),
     })
-    if (accepted && followupRequestRef.current?.key === key) followupRequestRef.current = undefined
+    if (!accepted) followupRequestRef.current = { key: JSON.stringify({ sessionId: sessionIdRef.current, prompt, attachments: payloadAttachments }), id }
     return accepted
   }, [mutateQueue])
 
@@ -1090,6 +1154,7 @@ export const useChat = (): UseChat => {
     const accepted = await mutateQueue({
       suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH",
       body: { prompt: prompt.trim(), isEditing: false, ...(attachments ? { attachments: attachments.map(({ id, name }) => ({ id, name })) } : {}) },
+      update: state => ({ ...state, items: state.items.map(item => item.id === id ? { ...item, prompt: prompt.trim(), isEditing: false, status: "queued", error: undefined, ...(attachments ? { attachments } : {}) } : item) }),
     })
     if (accepted && heldQueueEditRef.current?.id === id) heldQueueEditRef.current = undefined
     return accepted
@@ -1100,7 +1165,10 @@ export const useChat = (): UseChat => {
     releaseQueueEdit()
     const generation = openGenerationRef.current
     heldQueueEditRef.current = { sessionId: selectedSessionId, id }
-    const accepted = await mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: true } })
+    const accepted = await mutateQueue({
+      suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: true },
+      update: state => ({ ...state, items: state.items.map(item => item.id === id ? { ...item, isEditing: true } : item) }),
+    })
     if (!accepted || isUnmountedRef.current || generation !== openGenerationRef.current || selectedSessionId !== sessionIdRef.current) {
       releaseQueueEdit()
       return false
@@ -1108,13 +1176,24 @@ export const useChat = (): UseChat => {
     return true
   }, [mutateQueue, releaseQueueEdit])
   const cancelEditQueuedMessage = useCallback(async (id: string) => {
-    const accepted = await mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: false } })
+    const accepted = await mutateQueue({
+      suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: false },
+      update: state => ({ ...state, items: state.items.map(item => item.id === id ? { ...item, isEditing: false } : item) }),
+    })
     if (accepted && heldQueueEditRef.current?.id === id) heldQueueEditRef.current = undefined
     return accepted
   }, [mutateQueue])
-  const deleteQueuedMessage = useCallback((id: string) => mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "DELETE" }), [mutateQueue])
-  const steerQueuedMessage = useCallback((id: string) => mutateQueue({ suffix: `followups/${encodeURIComponent(id)}/steer`, method: "POST" }), [mutateQueue])
-  const resumeQueue = useCallback(() => mutateQueue({ suffix: "followups/resume", method: "POST" }), [mutateQueue])
+  const deleteQueuedMessage = useCallback((id: string) => mutateQueue({
+    suffix: `followups/${encodeURIComponent(id)}`, method: "DELETE",
+    update: state => ({ ...state, items: state.items.filter(item => item.id !== id) }),
+  }), [mutateQueue])
+  const steerQueuedMessage = useCallback((id: string) => mutateQueue({
+    suffix: `followups/${encodeURIComponent(id)}/steer`, method: "POST",
+    update: state => ({ ...state, items: state.items.map(item => item.id === id ? { ...item, status: "sending", error: undefined } : item) }),
+  }), [mutateQueue])
+  const resumeQueue = useCallback(() => mutateQueue({
+    suffix: "followups/resume", method: "POST", update: state => ({ ...state, isPaused: false }),
+  }), [mutateQueue])
 
   const upload = useCallback(
     async (file: File) => {
@@ -1165,42 +1244,65 @@ export const useChat = (): UseChat => {
 
   const deleteSession = useCallback(
     async (deletedSessionId: string) => {
+      if (deletingSessionsRef.current.has(deletedSessionId)) return false
+      const previous = sessionsRef.current.find(session => session.id === deletedSessionId)
+      const wasSelected = deletedSessionId === sessionIdRef.current
+      deletingSessionsRef.current.add(deletedSessionId)
+      updateSessions(current => current.filter(session => session.id !== deletedSessionId))
+      if (wasSelected) newChat()
+      const generation = openGenerationRef.current
       try {
-        await api(`/api/sessions/${encodeURIComponent(deletedSessionId)}`, parseDeletedSession, {
-          method: "DELETE",
-        })
-        updateSessions((current) =>
-          current.filter((session) => session.id !== deletedSessionId),
-        )
-        if (deletedSessionId === sessionIdRef.current) newChat()
+        await api(`/api/sessions/${encodeURIComponent(deletedSessionId)}`, parseDeletedSession, { method: "DELETE" })
         pushToast("Conversation deleted.", "success")
-        void refreshSessions()
         return true
       } catch (error) {
+        if (previous) updateSessions(current => [...current.filter(session => session.id !== deletedSessionId), previous].sort(compareSessions))
+        if (wasSelected && generation === openGenerationRef.current && sessionIdRef.current === undefined) void openSession(deletedSessionId)
         pushToast(`Couldn't delete the conversation. ${getErrorMessage(error)}`)
         return false
+      } finally {
+        deletingSessionsRef.current.delete(deletedSessionId)
+        void refreshSessions()
       }
     },
-    [api, newChat, pushToast, refreshSessions, updateSessions],
+    [api, newChat, openSession, pushToast, refreshSessions, updateSessions],
   )
 
-  const updateSession = useCallback(async (id: string, settings: { title?: string; isPinned?: boolean }) => {
-    try {
-      const details = await api(`/api/sessions/${encodeURIComponent(id)}`, parseSessionDetails, {
-        method: "PATCH", body: JSON.stringify(settings),
-      })
-      updateSessions(current => current.map(session => session.id === id ? { ...session, ...details } : session).sort(compareSessions))
-      void refreshSessions()
-      return true
-    } catch (error) {
-      pushToast(`Couldn't update the conversation. ${getErrorMessage(error)}`)
-      return false
-    }
+  const updateSession = useCallback((id: string, settings: SessionSettings) => {
+    const key = createRequestId()
+    const previous = sessionsRef.current.find(session => session.id === id)
+    if (previous && !sessionBasesRef.current.has(id)) sessionBasesRef.current.set(id, previous)
+    sessionMutationsRef.current.push({ key, id, settings })
+    updateSessions(current => current.map(session => session.id === id ? { ...session, ...settings } : session).sort(compareSessions))
+    const delivery = (sessionWritesRef.current.get(id) ?? Promise.resolve()).then(async () => {
+      try {
+        const details = await api(`/api/sessions/${encodeURIComponent(id)}`, parseSessionDetails, {
+          method: "PATCH", body: JSON.stringify(settings),
+        })
+        const base = sessionBasesRef.current.get(id)
+        if (base) sessionBasesRef.current.set(id, { ...base, ...details })
+        return true
+      } catch (error) {
+        pushToast(`Couldn't update the conversation. ${getErrorMessage(error)}`)
+        return false
+      } finally {
+        sessionMutationsRef.current = sessionMutationsRef.current.filter(mutation => mutation.key !== key)
+        const base = sessionBasesRef.current.get(id)
+        const remaining = sessionMutationsRef.current.filter(mutation => mutation.id === id)
+        const next = remaining.reduce<SessionSettings>((current, mutation) => ({ ...current, ...mutation.settings }), base ? { ...(settings.title !== undefined ? { title: base.title } : {}), ...(settings.isPinned !== undefined ? { isPinned: base.isPinned } : {}) } : {})
+        updateSessions(current => current.map(session => session.id === id ? { ...session, ...next } : session).sort(compareSessions))
+        if (!remaining.length) { sessionBasesRef.current.delete(id); void refreshSessions() }
+      }
+    })
+    sessionWritesRef.current.set(id, delivery)
+    void delivery.then(() => { if (sessionWritesRef.current.get(id) === delivery) sessionWritesRef.current.delete(id) })
+    return delivery
   }, [api, pushToast, refreshSessions, updateSessions])
 
   const abort = useCallback(async () => {
     const selectedSessionId = sessionIdRef.current
-    if (!selectedSessionId) return false
+    if (!selectedSessionId || stoppingSessionId === selectedSessionId) return false
+    setStoppingSessionId(selectedSessionId)
     try {
       const result = await api(
         `/api/sessions/${encodeURIComponent(selectedSessionId)}/abort`, parseAbortedRun,
@@ -1231,7 +1333,8 @@ export const useChat = (): UseChat => {
       pushToast(`Couldn't stop the response. ${getErrorMessage(error)}`)
       return false
     }
-  }, [api, pushToast, refreshQueue, retireLiveAssistant])
+    finally { setStoppingSessionId(current => current === selectedSessionId ? undefined : current) }
+  }, [api, pushToast, refreshQueue, retireLiveAssistant, stoppingSessionId])
 
   const setSearchQuery = useCallback(
     (query: string) => {
@@ -1309,6 +1412,7 @@ export const useChat = (): UseChat => {
     void boot()
     return () => {
       isUnmountedRef.current = true
+      queueRequestRef.current?.abort()
       window.clearTimeout(reconnectTimerRef.current)
       const socket = socketRef.current
       socketRef.current = undefined
@@ -1423,10 +1527,11 @@ export const useChat = (): UseChat => {
     isConnected,
     isOpening,
     isSending,
+    isStopping: !!sessionId && stoppingSessionId === sessionId,
     isUpdatingQueue,
     isQueuePaused: !!queueState && queueState.sessionId === sessionId && queueState.isPaused,
     queuedMessages: queueState && queueState.sessionId === sessionId ? queueState.items : [],
-    isRunning: sessionId ? runningSessionIds.includes(sessionId) : isSending,
+    isRunning: isSending || !!sessionId && runningSessionIds.includes(sessionId),
     isLoadingSessions,
     isLoadingMore,
     authError,
