@@ -8,6 +8,7 @@ import type { ChatSession, Toast } from './types';
 import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
+import { QueuedMessages } from './QueuedMessages';
 import { BrowserLive } from './BrowserLive';
 import { Settings } from './Settings';
 import { SessionMenu } from './SessionMenu';
@@ -38,6 +39,7 @@ export function App() {
   const [localToasts, setLocalToasts] = useState<Toast[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null); const contentRef = useRef<HTMLDivElement>(null);
   const shouldFollowRef = useRef(true); const [canJump, setCanJump] = useState(false);
+  const queueCountRef = useRef({ sessionId: chat.sessionId, count: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
   const toasts = [...chat.toasts, ...localToasts].sort((first, second) => first.createdAt - second.createdAt);
 
@@ -102,6 +104,14 @@ export function App() {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }
   }, [chat.pendingPrompt]);
+  useEffect(() => {
+    const previous = queueCountRef.current;
+    if (previous.sessionId === chat.sessionId && chat.queuedMessages.length > previous.count) {
+      shouldFollowRef.current = true;
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    }
+    queueCountRef.current = { sessionId: chat.sessionId, count: chat.queuedMessages.length };
+  }, [chat.sessionId, chat.queuedMessages.length]);
 
   return <MotionConfig reducedMotion="user"><div ref={viewportRef} {...stylex.props(styles.app)}><DialogBackdropReset />
     <div {...stylex.props(styles.desktopSidebar)}><Sidebar chat={chat} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onDelete={setDeleteTarget} /></div>
@@ -112,6 +122,7 @@ export function App() {
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionNotice)}>Reconnecting… You can still send a message.</div>}
       <div {...stylex.props(styles.scrollRegion)}><div id="chatScroll" ref={scrollRef} role="region" aria-label="Conversation" tabIndex={0} {...stylex.props(styles.scroll)} onScroll={event => { const box = event.currentTarget; const isNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80; shouldFollowRef.current = isNearBottom; setCanJump(!isNearBottom); }}><div ref={contentRef} {...stylex.props(styles.content)}>
         {chat.isOpening || !chat.isReady ? <div role="status" {...stylex.props(styles.loading)}>Loading conversation…</div> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<div role="status" {...stylex.props(styles.loading)}>Loading conversation…</div>}><Messages key={chat.sessionId} messages={chat.messages} liveAssistant={chat.liveAssistant} pendingPrompt={chat.pendingPrompt} pendingImages={chat.pendingAttachments.map(attachment => attachment.url)} isRunning={chat.isRunning} notify={notify} onZoom={setZoom} /></Suspense> : <div {...stylex.props(styles.empty)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1></div>}
+        {chat.isReady && !chat.isOpening && chat.sessionId && <QueuedMessages key={chat.sessionId} chat={chat} />}
       </div></div><AnimatePresence>{canJump && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => { shouldFollowRef.current = true; scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>{chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} isBrowserOpen={panel === 'browser'} onOpen={targetId => openPanel('browser', targetId)} />}</div>
       <Composer chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} />
     </main>

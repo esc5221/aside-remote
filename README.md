@@ -17,6 +17,9 @@ What you get:
   fragments with linked citations and folded tool activity, image attachments (camera on phones),
   markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
   Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
+- **Follow-up messages** — send during a response to queue the next turn. Queued
+  messages appear as conversation bubbles; their menu can edit, steer the current
+  response, or cancel the message. Stopping a response pauses its queue until resumed.
 - **Tab browser** — see all open Chrome tabs with live thumbnails, ask the agent to
   work on any tab, and open a preview sheet that updates automatically and recovers
   after connection failures. Tab lists and visible thumbnails also update automatically.

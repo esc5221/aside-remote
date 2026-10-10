@@ -77,6 +77,9 @@ DAEMON_URL = _env("ASIDE_DAEMON_URL", "http://127.0.0.1:21420")
 CACHE_DIR = BASE_DIR / "cache"
 MEDIA_DIR = CACHE_DIR / "media"
 SHOT_DIR = CACHE_DIR / "shots"
+FOLLOWUPS_FILE = Path(_env(
+    "ASIDE_REMOTE_FOLLOWUPS_FILE", str(HOME / ".aside-remote/followups.json")
+)).expanduser()
 for _d in (CACHE_DIR, MEDIA_DIR, SHOT_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 

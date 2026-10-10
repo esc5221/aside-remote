@@ -18,8 +18,10 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
   const fileInput = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const attachmentRef = useRef<Attachment[]>([]);
+  const draftRef = useRef(draft);
   const pendingPreviewRevokesRef = useRef<string[]>([]);
   const revisionRef = useRef(revision);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
   useEffect(() => { attachmentRef.current = attachments; }, [attachments]);
   useEffect(() => {
     if (!chat.recoveredAttachments.length) return;
@@ -42,7 +44,9 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     observer.observe(area); return () => observer.disconnect();
   }, []);
   const hasUploadPending = attachments.some(attachment => !attachment.upload && !attachment.hasError);
-  const canSend = chat.isReady && !chat.authError && !chat.isOpening && !chat.isSending && !hasUploadPending && (draft.trim().length > 0 || attachments.some(attachment => attachment.upload));
+  const hasDraftContent = draft.trim().length > 0 || attachments.some(attachment => attachment.upload);
+  const canSubmit = chat.isReady && !chat.authError && !chat.isOpening && !chat.isSending && !chat.isUpdatingQueue && !hasUploadPending && hasDraftContent;
+  const shouldQueue = chat.isRunning || chat.queuedMessages.length > 0;
   function flushPreviewRevokes() { pendingPreviewRevokesRef.current.splice(0).forEach(preview => URL.revokeObjectURL(preview)); }
 
   async function addFiles(files: File[]) {
@@ -69,14 +73,17 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
   }
 
   async function submit() {
-    if (chat.isRunning) { if (!chat.isSending) await chat.abort(); return; }
-    if (!canSend) return;
+    if (!canSubmit) return;
     const sentDraft = draft; const sentRevision = revisionRef.current;
-    const accepted = await chat.send(sentDraft, attachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []));
+    const sentAttachments = attachmentRef.current;
+    const uploads = sentAttachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []);
+    const accepted = shouldQueue ? await chat.queue(sentDraft, uploads) : await chat.send(sentDraft, uploads);
     if (!accepted || sentRevision !== revisionRef.current) return;
-    setDraft('');
-    pendingPreviewRevokesRef.current.push(...attachmentRef.current.map(attachment => attachment.preview));
-    attachmentRef.current = []; setAttachments([]);
+    if (draftRef.current === sentDraft) { draftRef.current = ''; setDraft(''); }
+    const sentKeys = new Set(sentAttachments.map(attachment => attachment.key));
+    pendingPreviewRevokesRef.current.push(...sentAttachments.map(attachment => attachment.preview));
+    attachmentRef.current = attachmentRef.current.filter(attachment => !sentKeys.has(attachment.key));
+    setAttachments(attachmentRef.current);
   }
 
   return <footer id="composer" {...stylex.props(styles.footer)}>
@@ -86,14 +93,15 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
           <AnimatePresence initial={false} onExitComplete={flushPreviewRevokes}>{attachments.map(attachment => <motion.div layout key={attachment.key} {...stylex.props(styles.attachment)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .84, y: -6 }} transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}>
             <img src={attachment.preview} alt={attachment.name} {...stylex.props(styles.thumbnail)} />
             {!attachment.upload && <span role="status" aria-label={attachment.name + (attachment.hasError ? ' failed to upload' : ' uploading')} {...stylex.props(styles.uploadState)}>{attachment.hasError ? 'Failed' : 'Uploading…'}</span>}
-            <motion.button type="button" {...stylex.props(styles.remove)} whileTap={{ scale: .86 }} aria-label={'Remove ' + attachment.name} onClick={() => { pendingPreviewRevokesRef.current.push(attachment.preview); setAttachments(current => current.filter(item => item.key !== attachment.key)); }}><X size={14} strokeWidth={2} /></motion.button>
+            <motion.button type="button" {...stylex.props(styles.remove)} whileTap={{ scale: .86 }} aria-label={'Remove ' + attachment.name} onClick={() => { pendingPreviewRevokesRef.current.push(attachment.preview); attachmentRef.current = attachmentRef.current.filter(item => item.key !== attachment.key); setAttachments(attachmentRef.current); }}><X size={14} strokeWidth={2} /></motion.button>
           </motion.div>)}</AnimatePresence>
         </motion.div>}
       </AnimatePresence>
-      <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : 'Message'} rows={1} value={draft} disabled={chat.isSending} {...stylex.props(styles.input)} onChange={event => setDraft(event.target.value)} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
-      <div {...stylex.props(styles.actions)}><div {...stylex.props(styles.leftActions)}><IconButton isOutlined label="Add photos" disabled={chat.isSending || !chat.isReady || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
-        <motion.button type="button" aria-haspopup="dialog" {...stylex.props(styles.browser)} whileTap={shouldReduceMotion ? undefined : { scale: .96 }} onClick={onBrowser}><BrowserIcon size={17} /><span>Browser</span></motion.button></div>
-        <motion.button type="submit" id="send" aria-label={chat.isSending ? 'Starting response' : chat.isRunning ? 'Stop response' : 'Send message'} title={chat.isRunning ? 'Stop response' : 'Send message'} disabled={chat.isSending || (!chat.isRunning && !canSend)} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)}>{chat.isRunning && !chat.isSending ? <Square size={14} fill="currentColor" /> : <ArrowUp size={22} strokeWidth={2.2} />}</motion.button>
+      <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
+      <div {...stylex.props(styles.actions)}><div {...stylex.props(styles.leftActions)}><IconButton isOutlined label="Add photos" disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
+        <motion.button type="button" aria-haspopup="dialog" aria-label="Open browser" {...stylex.props(styles.browser)} whileTap={shouldReduceMotion ? undefined : { scale: .96 }} onClick={onBrowser}><BrowserIcon size={17} /><span {...stylex.props(styles.browserLabel)}>Browser</span></motion.button></div>
+        <div {...stylex.props(styles.submitActions)}>{chat.isRunning && <motion.button type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onClick={() => { void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>}
+          {(!chat.isRunning || hasDraftContent) && <motion.button type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
       </div>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={event => { void addFiles([...event.target.files || []]); event.target.value = ''; }} />
     </motion.form>
@@ -120,7 +128,10 @@ const styles = stylex.create({
   input: { display: 'block', width: '100%', resize: 'none', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '1rem', lineHeight: 1.5, minHeight: 28, maxHeight: MAX_DRAFT_HEIGHT, overflowY: 'auto', overflowWrap: 'anywhere', padding: '0 10px 4px', '::placeholder': { color: tokens.muted } },
   actions: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
   leftActions: { display: 'flex', alignItems: 'center', gap: 4 },
-  browser: { display: 'flex', alignItems: 'center', gap: 7, minHeight: 38, padding: '0 12px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, borderRadius: 24, backgroundColor: { default: tokens.canvas, ':hover': tokens.hover }, color: tokens.text, fontSize: '0.8125rem', fontWeight: 500 },
+  browser: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 38, padding: '0 12px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, borderRadius: 24, backgroundColor: { default: tokens.canvas, ':hover': tokens.hover }, color: tokens.text, fontSize: '0.8125rem', fontWeight: 500, '@media (max-width: 380px)': { width: 38, padding: 0 } },
+  browserLabel: { '@media (max-width: 380px)': { display: 'none' } },
+  submitActions: { display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 },
+  stop: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, backgroundColor: tokens.canvas, color: tokens.text, flexShrink: 0 },
   send: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 0, backgroundColor: tokens.text, color: tokens.canvas, marginRight: 4, flexShrink: 0 },
   attachments: { display: 'flex', gap: 10, overflowX: 'auto', padding: '0 10px 10px', maxWidth: '100%', minWidth: 0 },
   attachment: { position: 'relative', width: 72, height: 72, flexShrink: 0 },

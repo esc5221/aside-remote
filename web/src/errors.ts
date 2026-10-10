@@ -17,6 +17,11 @@ const STATUS_MESSAGES: Record<number, string> = {
 const SAFE_ERROR_MESSAGES = [
   BROWSER_CONNECTION_MESSAGE,
   GENERIC_ERROR_MESSAGE,
+  'This queued message is already being sent',
+  'Queued message not found',
+  'The message could not start. Review it and resume the queue.',
+  'The message could not be delivered. Review it and resume the queue.',
+  'Delivery was interrupted. Review the message and resume the queue.',
   'The response could not start. Please try again.',
   'The response ended with an error. Please try again.',
   RUNNING_MESSAGE,

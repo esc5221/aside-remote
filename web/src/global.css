@@ -44,6 +44,9 @@
   a { color: inherit; text-underline-offset: 3px; overflow-wrap: anywhere; }
   dialog { color: inherit; }
   dialog::backdrop { background: rgb(0 0 0 / .28); backdrop-filter: blur(2px); }
+  .queued-message-menu { opacity: 0; transition: opacity 140ms ease, display 140ms allow-discrete, overlay 140ms allow-discrete; }
+  .queued-message-menu:popover-open { opacity: 1; }
+  @starting-style { .queued-message-menu:popover-open { opacity: 0; } }
   ::selection { background: var(--selection); }
   .markdown { font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
   .markdown > :first-child { margin-top: 0; }

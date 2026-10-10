@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatSession,
   LiveAssistant,
+  QueuedMessage,
   Toast,
   UploadAttachment,
   UseChat,
@@ -18,6 +19,8 @@ const PAGE_SIZE = 30
 const MESSAGE_TAIL = 400
 const RUN_POLL_INTERVAL_MS = 6_000
 const SESSION_REFRESH_INTERVAL_MS = 5_000
+const QUEUE_REFRESH_INTERVAL_MS = 1_500
+const FOLLOWUP_REQUEST_TIMEOUT_MS = 60_000
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
 const MAX_STALE_STREAM_KEYS = 128
@@ -55,6 +58,8 @@ type RunRequestResponse = {
 type ActiveLiveAssistant = LiveAssistant & {
   canonicalStartSeq: number
 }
+
+type QueueResponse = { items: QueuedMessage[]; isPaused: boolean }
 
 type SocketMessage = {
   op: string
@@ -138,6 +143,32 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null
 }
 
+const parseQueueResponse = (value: unknown): QueueResponse => {
+  if (!isRecord(value) || !Array.isArray(value.items) || typeof value.isPaused !== "boolean") {
+    throw new Error("Invalid queue response.")
+  }
+  const items = value.items.map((item): QueuedMessage => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.prompt !== "string" ||
+        !Array.isArray(item.attachments) || !["queued", "sending", "error"].includes(String(item.status))) {
+      throw new Error("Invalid queued message.")
+    }
+    const attachments = item.attachments.map((attachment): UploadAttachment => {
+      if (!isRecord(attachment) || typeof attachment.id !== "string" || typeof attachment.name !== "string" ||
+          typeof attachment.mime !== "string" || typeof attachment.bytes !== "number" || typeof attachment.url !== "string") {
+        throw new Error("Invalid queued attachment.")
+      }
+      return { id: attachment.id, name: attachment.name, mime: attachment.mime, bytes: attachment.bytes, url: attachment.url }
+    })
+    return {
+      id: item.id, prompt: item.prompt, attachments,
+      status: item.status === "sending" ? "sending" : item.status === "error" ? "error" : "queued",
+      isEditing: item.isEditing === true,
+      error: typeof item.error === "string" ? formatRequestError({ message: item.error }) : undefined,
+    }
+  })
+  return { items, isPaused: value.isPaused }
+}
+
 const isChatMessage = (value: unknown): value is ChatMessage => {
   if (!isRecord(value)) return false
   return (
@@ -190,6 +221,8 @@ export const useChat = (): UseChat => {
   const [isConnected, setIsConnected] = useState(false)
   const [isOpening, setIsOpening] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isUpdatingQueue, setIsUpdatingQueue] = useState(false)
+  const [queueState, setQueueState] = useState<QueueResponse & { sessionId: string }>()
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [authError, setAuthError] = useState<string>()
@@ -232,6 +265,10 @@ export const useChat = (): UseChat => {
   const retiredStreamIdsRef = useRef(new Set<string>())
   const abortedRunIdsRef = useRef(new Set<string>())
   const isUnmountedRef = useRef(false)
+  const queueMutationRef = useRef<string | undefined>(undefined)
+  const queueRevisionRef = useRef(0)
+  const followupRequestRef = useRef<{ key: string; id: string } | undefined>(undefined)
+  const heldQueueEditRef = useRef<{ sessionId: string; id: string } | undefined>(undefined)
 
   const rememberRetiredStream = useCallback((selectedSessionId: string, streamId: string) => {
     const retired = retiredStreamIdsRef.current
@@ -305,6 +342,33 @@ export const useChat = (): UseChat => {
     const response = await request(path, init)
     const value: unknown = await response.json()
     return value as T
+  }, [request])
+
+  const releaseQueueEdit = useCallback(() => {
+    const held = heldQueueEditRef.current
+    if (!held) return
+    heldQueueEditRef.current = undefined
+    void request(`/api/sessions/${encodeURIComponent(held.sessionId)}/followups/${encodeURIComponent(held.id)}`, {
+      method: "PATCH", body: JSON.stringify({ isEditing: false }), keepalive: true,
+      signal: AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS),
+    }).catch(() => undefined)
+  }, [request])
+
+  const refreshQueue = useCallback(async (signal?: AbortSignal) => {
+    const selectedSessionId = sessionIdRef.current
+    if (!selectedSessionId || queueMutationRef.current) return
+    const generation = openGenerationRef.current
+    const revision = ++queueRevisionRef.current
+    try {
+      const response = await request(`/api/sessions/${encodeURIComponent(selectedSessionId)}/followups`, { cache: "no-store", signal })
+      const result = parseQueueResponse(await response.json())
+      if (!signal?.aborted && !isUnmountedRef.current && generation === openGenerationRef.current &&
+          selectedSessionId === sessionIdRef.current && revision === queueRevisionRef.current && !queueMutationRef.current) {
+        setQueueState({ ...result, sessionId: selectedSessionId })
+      }
+    } catch {
+      // Keep the last queue until the next refresh or connection recovery.
+    }
   }, [request])
 
   const sendSocket = useCallback((payload: object) => {
@@ -435,6 +499,7 @@ export const useChat = (): UseChat => {
 
   const openSession = useCallback(
     async (selectedSessionId: string, shouldNavigate = true) => {
+      releaseQueueEdit()
       cancelPendingRequests()
       const previousSessionId = sessionIdRef.current
       if (previousSessionId && previousSessionId !== selectedSessionId) {
@@ -485,7 +550,7 @@ export const useChat = (): UseChat => {
         }
       }
     },
-    [cancelPendingRequests, fetchMessages, pushToast, retireLiveAssistant, sendSocket],
+    [cancelPendingRequests, fetchMessages, pushToast, releaseQueueEdit, retireLiveAssistant, sendSocket],
   )
 
   const restoreSavedSession = useCallback(async () => {
@@ -507,6 +572,7 @@ export const useChat = (): UseChat => {
   }, [openSession])
 
   const newChat = useCallback(() => {
+    releaseQueueEdit()
     cancelPendingRequests()
     const previousSessionId = sessionIdRef.current
     if (previousSessionId) sendSocket({ op: "unsub", sessionId: previousSessionId })
@@ -526,7 +592,7 @@ export const useChat = (): UseChat => {
     localStorage.removeItem(LAST_SESSION_KEY)
     localStorage.setItem(LAST_SESSION_MODE_KEY, "new")
     if (location.pathname !== "/") history.pushState({}, "", "/")
-  }, [cancelPendingRequests, retireLiveAssistant, sendSocket])
+  }, [cancelPendingRequests, releaseQueueEdit, retireLiveAssistant, sendSocket])
 
   const settlePendingRequest = useCallback(
     (requestId: string, accepted: boolean, error?: string) => {
@@ -644,6 +710,20 @@ export const useChat = (): UseChat => {
       }
       if (payload.op === "hello") {
         setRunningSessionIds((current) => [...new Set([...current, ...(payload.running ?? [])])])
+        return
+      }
+      if (payload.op === "queue.changed" && payload.sessionId === sessionIdRef.current) {
+        void refreshQueue()
+        return
+      }
+      if (payload.op === "run.started" && !payload.requestId && payload.sessionId && payload.runId) {
+        const startedSessionId = payload.sessionId
+        activeRunIdsRef.current.set(startedSessionId, payload.runId)
+        setRunningSessionIds((current) => current.includes(startedSessionId) ? current : [...current, startedSessionId])
+        if (payload.sessionId === sessionIdRef.current) {
+          void fetchMessages(payload.sessionId, openGenerationRef.current).catch(() => undefined)
+          void refreshQueue()
+        }
         return
       }
       if (
@@ -829,6 +909,7 @@ export const useChat = (): UseChat => {
       reconcileLiveAssistant,
       rememberRetiredStream,
       refreshSessions,
+      refreshQueue,
       retireLiveAssistant,
       sendSocket,
       settlePendingRequest,
@@ -967,6 +1048,95 @@ export const useChat = (): UseChat => {
     [api, pushToast, refreshSessions, subscribe],
   )
 
+  const mutateQueue = useCallback(async ({ suffix, method, body }: {
+    suffix: string; method: string; body?: object;
+  }) => {
+    const selectedSessionId = sessionIdRef.current
+    if (!selectedSessionId || queueMutationRef.current || activeSendRef.current) return false
+    const generation = openGenerationRef.current
+    const mutationId = createRequestId()
+    queueMutationRef.current = mutationId
+    queueRevisionRef.current += 1
+    setIsUpdatingQueue(true)
+    try {
+      const response = await request(`/api/sessions/${encodeURIComponent(selectedSessionId)}/${suffix}`, {
+        method, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS),
+      })
+      const value: unknown = await response.json()
+      const result = parseQueueResponse(value)
+      if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
+        setQueueState({ ...result, sessionId: selectedSessionId })
+        const steeredItemId = suffix.match(/^followups\/([^/]+)\/steer$/)?.[1]
+        if (steeredItemId && result.items.some(item => item.id === steeredItemId)) {
+          pushToast("The message could not be delivered. It is still in your queue.")
+          return false
+        }
+        if (suffix.endsWith("/steer")) {
+          setRunningSessionIds((current) => current.includes(selectedSessionId) ? current : [...current, selectedSessionId])
+          void fetchMessages(selectedSessionId, generation).catch(() => undefined)
+        }
+      }
+      return true
+    } catch (error) {
+      if (!isUnmountedRef.current && generation === openGenerationRef.current && selectedSessionId === sessionIdRef.current) {
+        pushToast(`Couldn't update the message. ${getErrorMessage(error)}`)
+      }
+      return false
+    } finally {
+      if (queueMutationRef.current === mutationId) {
+        queueMutationRef.current = undefined
+        queueRevisionRef.current += 1
+        if (!isUnmountedRef.current) {
+          setIsUpdatingQueue(false)
+          void refreshQueue()
+        }
+      }
+    }
+  }, [fetchMessages, pushToast, refreshQueue, request])
+
+  const queue = useCallback(async (prompt: string, attachments: UploadAttachment[] = []) => {
+    if (!prompt.trim() && attachments.length === 0) return false
+    const payloadAttachments = attachments.map(({ id, name }) => ({ id, name }))
+    const key = JSON.stringify({ sessionId: sessionIdRef.current, prompt, attachments: payloadAttachments })
+    if (followupRequestRef.current?.key !== key) followupRequestRef.current = { key, id: createRequestId() }
+    const accepted = await mutateQueue({
+      suffix: "followups", method: "POST",
+      body: { id: followupRequestRef.current.id, prompt: prompt.trim(), attachments: payloadAttachments },
+    })
+    if (accepted && followupRequestRef.current?.key === key) followupRequestRef.current = undefined
+    return accepted
+  }, [mutateQueue])
+
+  const editQueuedMessage = useCallback(async (id: string, prompt: string, attachments?: UploadAttachment[]) => {
+    const accepted = await mutateQueue({
+      suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH",
+      body: { prompt: prompt.trim(), isEditing: false, ...(attachments ? { attachments: attachments.map(({ id, name }) => ({ id, name })) } : {}) },
+    })
+    if (accepted && heldQueueEditRef.current?.id === id) heldQueueEditRef.current = undefined
+    return accepted
+  }, [mutateQueue])
+  const beginEditQueuedMessage = useCallback(async (id: string) => {
+    const selectedSessionId = sessionIdRef.current
+    if (!selectedSessionId) return false
+    releaseQueueEdit()
+    const generation = openGenerationRef.current
+    heldQueueEditRef.current = { sessionId: selectedSessionId, id }
+    const accepted = await mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: true } })
+    if (!accepted || isUnmountedRef.current || generation !== openGenerationRef.current || selectedSessionId !== sessionIdRef.current) {
+      releaseQueueEdit()
+      return false
+    }
+    return true
+  }, [mutateQueue, releaseQueueEdit])
+  const cancelEditQueuedMessage = useCallback(async (id: string) => {
+    const accepted = await mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "PATCH", body: { isEditing: false } })
+    if (accepted && heldQueueEditRef.current?.id === id) heldQueueEditRef.current = undefined
+    return accepted
+  }, [mutateQueue])
+  const deleteQueuedMessage = useCallback((id: string) => mutateQueue({ suffix: `followups/${encodeURIComponent(id)}`, method: "DELETE" }), [mutateQueue])
+  const steerQueuedMessage = useCallback((id: string) => mutateQueue({ suffix: `followups/${encodeURIComponent(id)}/steer`, method: "POST" }), [mutateQueue])
+  const resumeQueue = useCallback(() => mutateQueue({ suffix: "followups/resume", method: "POST" }), [mutateQueue])
+
   const upload = useCallback(
     async (file: File) => {
       try {
@@ -1062,12 +1232,13 @@ export const useChat = (): UseChat => {
         setPendingAttachments([])
         pendingAttachmentsRef.current = []
       }
+      void refreshQueue()
       return result.aborted
     } catch (error) {
       pushToast(`Couldn't stop the response. ${getErrorMessage(error)}`)
       return false
     }
-  }, [api, pushToast, retireLiveAssistant])
+  }, [api, pushToast, refreshQueue, retireLiveAssistant])
 
   const setSearchQuery = useCallback(
     (query: string) => {
@@ -1084,6 +1255,24 @@ export const useChat = (): UseChat => {
     setRecoveredDraft(undefined)
     setRecoveredAttachments([])
   }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const held = heldQueueEditRef.current
+      if (!held || document.visibilityState === "hidden") return
+      void request(`/api/sessions/${encodeURIComponent(held.sessionId)}/followups/${encodeURIComponent(held.id)}`, {
+        method: "PATCH", body: JSON.stringify({ isEditing: true }), signal: AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS),
+      }).then(() => {
+        const current = heldQueueEditRef.current
+        if (current?.sessionId === held.sessionId && current.id === held.id) return
+        return request(`/api/sessions/${encodeURIComponent(held.sessionId)}/followups/${encodeURIComponent(held.id)}`, {
+          method: "PATCH", body: JSON.stringify({ isEditing: false }), keepalive: true,
+          signal: AbortSignal.timeout(FOLLOWUP_REQUEST_TIMEOUT_MS),
+        })
+      }).catch(() => undefined)
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [request])
 
   useEffect(() => {
     isUnmountedRef.current = false
@@ -1138,6 +1327,14 @@ export const useChat = (): UseChat => {
   }, [connectSocket, loadSessionPage, restoreSavedSession])
 
   useEffect(() => {
+    window.addEventListener("pagehide", releaseQueueEdit)
+    return () => {
+      window.removeEventListener("pagehide", releaseQueueEdit)
+      releaseQueueEdit()
+    }
+  }, [releaseQueueEdit])
+
+  useEffect(() => {
     const handlePopState = () => {
       const match = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{1,64})\/?$/)
       if (match) {
@@ -1145,6 +1342,7 @@ export const useChat = (): UseChat => {
         return
       }
       if (location.pathname !== "/") return
+      releaseQueueEdit()
       cancelPendingRequests()
       const previousSessionId = sessionIdRef.current
       if (previousSessionId) sendSocket({ op: "unsub", sessionId: previousSessionId })
@@ -1166,7 +1364,7 @@ export const useChat = (): UseChat => {
     }
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
-  }, [cancelPendingRequests, openSession, retireLiveAssistant, sendSocket])
+  }, [cancelPendingRequests, openSession, releaseQueueEdit, retireLiveAssistant, sendSocket])
 
   useEffect(() => {
     const poll = window.setInterval(() => {
@@ -1226,12 +1424,16 @@ export const useChat = (): UseChat => {
   }, [api, fetchMessages, pushToast, runningSessionIds])
 
   useAutoRefresh(refreshSessions, SESSION_REFRESH_INTERVAL_MS, isReady)
+  useAutoRefresh(refreshQueue, QUEUE_REFRESH_INTERVAL_MS, isReady && !!sessionId && !authError && !isOpening)
 
   return {
     isReady,
     isConnected,
     isOpening,
     isSending,
+    isUpdatingQueue,
+    isQueuePaused: !!queueState && queueState.sessionId === sessionId && queueState.isPaused,
+    queuedMessages: queueState && queueState.sessionId === sessionId ? queueState.items : [],
     isRunning: sessionId ? runningSessionIds.includes(sessionId) : isSending,
     isLoadingSessions,
     isLoadingMore,
@@ -1257,6 +1459,13 @@ export const useChat = (): UseChat => {
     openSession,
     newChat,
     send,
+    queue,
+    editQueuedMessage,
+    beginEditQueuedMessage,
+    cancelEditQueuedMessage,
+    deleteQueuedMessage,
+    steerQueuedMessage,
+    resumeQueue,
     upload,
     deleteSession,
     abort,

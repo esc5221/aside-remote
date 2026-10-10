@@ -19,6 +19,7 @@ import logging
 import re
 import subprocess
 import time
+import uuid
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -29,6 +30,7 @@ import cfaccess
 import config
 import daemondb
 import fonts
+import followups
 import uploads
 import runner
 import sessions
@@ -119,6 +121,7 @@ async def _repl_error_handler(_request: Request, exc: ReplError):
 async def _startup() -> None:
     global _http
     _http = httpx.AsyncClient()
+    followup_queue.start()
     asyncio.create_task(_warm_mcp())
     log.info("aside-remote up on %s:%s (auth=%s)",
              config.HOST, config.PORT, "on" if config.BEARER else "OFF")
@@ -133,6 +136,7 @@ async def _warm_mcp() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
+    await followup_queue.close()
     await mcp.close()
     if _http:
         await _http.aclose()
@@ -352,6 +356,7 @@ async def api_delete_session(session_id: str):
         if not is_deleted:
             raise HTTPException(502, "Aside could not delete the conversation. Refresh the list and try again.")
     await hub.forget_session(session_id)
+    await followup_queue.clear(session_id)
     return {"deleted": True, "sessionId": session_id}
 
 
@@ -453,17 +458,141 @@ async def api_continue(session_id: str, payload: dict):
 
 @app.post("/api/sessions/{session_id}/abort", dependencies=[Auth])
 async def api_abort(session_id: str):
+    await followup_queue.pause(session_id)
     return {"aborted": await runner.abort(session_id)}
 
 
-@app.post("/api/sessions/{session_id}/steer", dependencies=[Auth])
-async def api_steer(session_id: str, payload: dict):
-    """실행 중인 스텝을 끊고 새 지시를 넣는다. mode=queue 면 현재 스텝 뒤에 붙인다."""
-    prompt = (payload.get("prompt") or "").strip()
-    if not prompt:
+@app.get("/api/sessions/{session_id}/followups", dependencies=[Auth])
+async def api_followups(session_id: str):
+    _require_session(session_id)
+    return await followup_queue.get(session_id)
+
+
+@app.post("/api/sessions/{session_id}/followups", dependencies=[Auth])
+async def api_followup_create(session_id: str, payload: dict):
+    _require_session(session_id)
+    item_id = _followup_id(payload.get("id"))
+    item = _followup_content(payload)
+    item["id"] = item_id
+    return await followup_queue.enqueue(session_id, item)
+
+
+@app.post("/api/sessions/{session_id}/followups/resume", dependencies=[Auth])
+async def api_followup_resume(session_id: str):
+    _require_session(session_id)
+    return await followup_queue.resume(session_id)
+
+
+@app.patch("/api/sessions/{session_id}/followups/{item_id}", dependencies=[Auth])
+async def api_followup_edit(session_id: str, item_id: str, payload: dict):
+    _require_session(session_id)
+    item_id = _followup_id(item_id)
+    is_editing = payload.get("isEditing", False)
+    if not isinstance(is_editing, bool):
+        raise HTTPException(400, "isEditing must be a boolean")
+    has_content = "prompt" in payload or "attachments" in payload
+    if not has_content and "isEditing" not in payload:
+        raise HTTPException(400, "message update required")
+    update = None
+    if has_content:
+        update = {}
+        if "prompt" in payload:
+            if not isinstance(payload["prompt"], str):
+                raise HTTPException(400, "invalid prompt")
+            update["prompt"] = payload["prompt"].strip()
+        if "attachments" in payload:
+            update["attachments"] = _validated_attachments(payload)
+    try:
+        return await followup_queue.edit(session_id, item_id, update, is_editing)
+    except followups.ItemNotFound:
+        raise HTTPException(404, "Queued message not found")
+    except followups.ItemSending:
+        raise HTTPException(409, "This queued message is already being sent")
+    except followups.EmptyItem:
         raise HTTPException(400, "prompt required")
-    fn = runner.queue if payload.get("mode") == "queue" else runner.steer
-    return {"ok": await fn(session_id, prompt)}
+
+
+@app.delete("/api/sessions/{session_id}/followups/{item_id}", dependencies=[Auth])
+async def api_followup_delete(session_id: str, item_id: str):
+    _require_session(session_id)
+    item_id = _followup_id(item_id)
+    try:
+        return await followup_queue.delete(session_id, item_id)
+    except followups.ItemNotFound:
+        raise HTTPException(404, "Queued message not found")
+    except followups.ItemSending:
+        raise HTTPException(409, "This queued message is already being sent")
+
+
+@app.post("/api/sessions/{session_id}/followups/{item_id}/steer", dependencies=[Auth])
+async def api_followup_steer(session_id: str, item_id: str):
+    _require_session(session_id)
+    item_id = _followup_id(item_id)
+    try:
+        return await followup_queue.steer(session_id, item_id, _deliver_steer)
+    except followups.ItemNotFound:
+        raise HTTPException(404, "Queued message not found")
+    except followups.ItemSending:
+        raise HTTPException(409, "This queued message is already being sent")
+
+
+def _require_session(session_id: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9]{12,32}", session_id) or sessions.session_dir(session_id) is None:
+        raise HTTPException(404, runner.SESSION_NOT_FOUND_MESSAGE)
+
+
+def _followup_id(value: object) -> str:
+    if not isinstance(value, str):
+        raise HTTPException(400, "valid message id required")
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(400, "valid message id required")
+    if str(parsed) != value.lower():
+        raise HTTPException(400, "valid message id required")
+    return str(parsed)
+
+
+def _followup_content(payload: dict) -> dict:
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str):
+        prompt = ""
+    prompt = prompt.strip()
+    attachments = _validated_attachments(payload)
+    if not prompt and not attachments:
+        raise HTTPException(400, "prompt required")
+    return {"prompt": prompt, "attachments": attachments}
+
+
+def _validated_attachments(payload: dict) -> list[dict]:
+    raw = payload.get("attachments") or []
+    if not isinstance(raw, list):
+        raise HTTPException(400, "invalid attachments")
+    attachments = []
+    for value in raw:
+        if not isinstance(value, dict) or not isinstance(value.get("id"), str):
+            raise HTTPException(400, "invalid attachment")
+        path = uploads.path_of(value["id"])
+        if path is None:
+            raise HTTPException(400, "attachment not found")
+        try:
+            with path.open("rb") as file:
+                kind = uploads.sniff(file.read(12))
+            size = path.stat().st_size
+        except OSError:
+            raise HTTPException(400, "attachment not found")
+        if kind is None:
+            raise HTTPException(400, "invalid attachment")
+        mime, _extension = kind
+        name = value.get("name")
+        attachments.append({
+            "id": value["id"],
+            "name": (name.strip() if isinstance(name, str) and name.strip() else path.name)[:120],
+            "mime": mime,
+            "bytes": size,
+            "url": f"/api/upload/{value['id']}",
+        })
+    return attachments
 
 
 # ------------------------------------------------------------------ 미디어
@@ -769,6 +898,113 @@ async def push_ntfy(session_id: str, run: "runner.Run") -> None:
 
 hub = Hub()
 
+
+async def _queue_changed(session_id: str, state: dict) -> None:
+    await hub.broadcast(session_id, {"op": "queue.changed", "sessionId": session_id, **state})
+
+
+async def _queue_is_running(session_id: str) -> bool:
+    run = runner.get_run(session_id)
+    if run and run.running:
+        return True
+    status = await sessions.session_status(_http, session_id)
+    if status is None:
+        raise RuntimeError("Aside session status is unavailable")
+    return status == "running"
+
+
+async def _start_followup(session_id: str, item: dict, *, allow_paused: bool = False) -> bool:
+    prompt = _with_attachments(item)
+    if not prompt:
+        return False
+    next_seq, expected_text = await _ensure_acceptance_marker(session_id, item, prompt)
+    if _has_user_message(session_id, next_seq, expected_text):
+        return True
+    async with followup_queue.launch(session_id, allow_paused=allow_paused):
+        await asyncio.to_thread(daemondb.ensure_alive, session_id)
+        try:
+            run = await runner.continue_run(session_id, prompt)
+        except FileExistsError as exc:
+            if str(exc) == runner.RUN_ALREADY_RUNNING_MESSAGE:
+                raise followups.RetryLater
+            raise
+        hub.ensure_stream(run)
+        asyncio.create_task(hub.watch_run(run))
+        await hub.broadcast(session_id, {
+            "op": "run.started", "sessionId": session_id, "runId": run.stream_id,
+        })
+    return await _wait_for_user_message(session_id, next_seq, expected_text, run)
+
+
+async def _ensure_acceptance_marker(session_id: str, item: dict,
+                                    prompt: str) -> tuple[int, str]:
+    expected_text = sessions.rewrite_local_paths(prompt).strip()
+    next_seq = item.get("acceptanceSeq")
+    if isinstance(next_seq, int):
+        return next_seq, expected_text
+    messages, _offset = sessions.read_messages(session_id)
+    next_seq = messages[-1]["seq"] + 1 if messages else 0
+    item_id = item.get("id")
+    if isinstance(item_id, str):
+        await followup_queue.set_acceptance(session_id, item_id, next_seq, expected_text)
+        item["acceptanceSeq"] = next_seq
+        item["acceptanceText"] = expected_text
+    return next_seq, expected_text
+
+
+def _has_user_message(session_id: str, next_seq: int, expected_text: str) -> bool:
+    messages, _offset = sessions.read_messages(session_id)
+    return any(
+        message.get("role") == "user" and message.get("seq", -1) >= next_seq
+        and "".join(block.get("text", "") for block in message.get("blocks", [])
+                    if block.get("type") == "text").strip() == expected_text
+        for message in messages
+    )
+
+
+async def _wait_for_user_message(session_id: str, next_seq: int, expected_text: str,
+                                 run: "runner.Run") -> bool:
+    while True:
+        try:
+            if _has_user_message(session_id, next_seq, expected_text):
+                return True
+        except OSError:
+            pass
+        if not run.running:
+            break
+        await asyncio.sleep(0.1)
+    await asyncio.sleep(config.JSONL_POLL_SEC * 3)
+    try:
+        if _has_user_message(session_id, next_seq, expected_text):
+            return True
+    except OSError:
+        pass
+    return False
+
+
+async def _deliver_steer(session_id: str, item: dict) -> bool:
+    prompt = _with_attachments(item)
+    if not prompt:
+        return False
+    await _ensure_acceptance_marker(session_id, item, prompt)
+    if await _queue_is_running(session_id):
+        if await runner.steer(session_id, prompt):
+            return True
+        if await _queue_is_running(session_id):
+            return False
+    try:
+        return await _start_followup(session_id, item, allow_paused=True)
+    except followups.RetryLater:
+        return await runner.steer(session_id, prompt)
+
+
+followup_queue = followups.FollowupQueue(
+    config.FOLLOWUPS_FILE,
+    _queue_is_running,
+    _start_followup,
+    _queue_changed,
+)
+
 _RUN_REQUEST_TTL_SEC = 10 * 60
 _RUN_REQUEST_MAX = 256
 _run_requests: dict[str, dict] = {}
@@ -1013,6 +1249,8 @@ async def _handle_ws(ws: WebSocket, msg: dict) -> None:
 
     if op == "abort":
         sid = msg.get("sessionId")
+        if sid:
+            await followup_queue.pause(sid)
         await _send(ws, {"op": "abort.ok", "requestId": rid,
                          "aborted": (await runner.abort(sid)) if sid else False})
         return

@@ -91,6 +91,15 @@ export type UploadAttachment = {
   url: string
 }
 
+export type QueuedMessage = {
+  id: string
+  prompt: string
+  attachments: UploadAttachment[]
+  status: "queued" | "sending" | "error"
+  isEditing?: boolean
+  error?: string
+}
+
 export type Toast = {
   id: string
   createdAt: number
@@ -103,6 +112,9 @@ export type UseChat = {
   isConnected: boolean
   isOpening: boolean
   isSending: boolean
+  isUpdatingQueue: boolean
+  isQueuePaused: boolean
+  queuedMessages: QueuedMessage[]
   isRunning: boolean
   isLoadingSessions: boolean
   isLoadingMore: boolean
@@ -128,6 +140,13 @@ export type UseChat = {
   openSession: (sessionId: string) => Promise<boolean>
   newChat: () => void
   send: (prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
+  queue: (prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
+  editQueuedMessage: (id: string, prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
+  beginEditQueuedMessage: (id: string) => Promise<boolean>
+  cancelEditQueuedMessage: (id: string) => Promise<boolean>
+  deleteQueuedMessage: (id: string) => Promise<boolean>
+  steerQueuedMessage: (id: string) => Promise<boolean>
+  resumeQueue: () => Promise<boolean>
   upload: (file: File) => Promise<UploadAttachment>
   deleteSession: (sessionId: string) => Promise<boolean>
   abort: () => Promise<boolean>
