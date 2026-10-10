@@ -2,7 +2,7 @@ import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { X } from 'lucide-react';
-import { motion, usePresence, useReducedMotion, type HTMLMotionProps } from 'motion/react';
+import { motion, usePresence, useReducedMotion, useTransform, type HTMLMotionProps, type MotionValue } from 'motion/react';
 import { tokens } from './tokens.stylex';
 
 export const ICON_STROKE = 1.8;
@@ -20,7 +20,7 @@ export function BrowserIcon({ size = 22 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M3 9h18" /><path d="M6.5 6.5h.01M9.5 6.5h.01M12.5 6.5h.01" strokeWidth="2" /></svg>;
 }
 
-export function Dialog({ title, children, onClose, isWide = false, isFullScreen = false }: { title: string; children: ReactNode; onClose: () => void; isWide?: boolean; isFullScreen?: boolean }) {
+export function Dialog({ title, children, onClose, isWide = false, isFullScreen = false, swipeY }: { title: string; children: ReactNode; onClose: () => void; isWide?: boolean; isFullScreen?: boolean; swipeY?: MotionValue<number> }) {
   const ref = useRef<HTMLDialogElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -29,6 +29,10 @@ export function Dialog({ title, children, onClose, isWide = false, isFullScreen 
   const hasDraggedRef = useRef(false);
   const [isPresent, safeToRemove] = usePresence();
   const shouldReduceMotion = useReducedMotion();
+  const swipeProgress = useTransform(() => Math.min(1, (swipeY?.get() ?? 0) / window.innerHeight));
+  const swipeScale = useTransform(swipeProgress, [0, 1], [1, .85]);
+  const swipeRadius = useTransform(swipeProgress, [0, .2], [0, 28]);
+  const backdropOpacity = useTransform(swipeProgress, [0, 1], [1, 0]);
   const isMobile = useMediaQuery('(max-width: 700px)');
   const closeFromSwipe = useEffectEvent(requestClose);
   useEffect(() => {
@@ -127,8 +131,8 @@ export function Dialog({ title, children, onClose, isWide = false, isFullScreen 
       ? { initial: { y: SHEET_CLOSED_Y, opacity: .98 }, animate: { y: 0, opacity: 1 }, exit: { y: SHEET_CLOSED_Y, opacity: .98 }, transition: { type: 'tween' as const, duration: .32, ease: DIALOG_EASE } }
       : { initial: { opacity: 0, scale: .96, y: 10 }, animate: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: .97, y: 8 }, transition: { duration: .2, ease: DIALOG_EASE } };
   return <motion.dialog ref={ref} tabIndex={-1} data-motion-overlay="" style={{ pointerEvents: isPresent ? 'auto' : 'none' }} {...stylex.props(styles.dialog)} aria-label={title} onKeyDown={event => { trapDialogFocus(event); event.stopPropagation(); }} onCancel={event => { event.preventDefault(); event.stopPropagation(); requestClose(); }}>
-    <motion.button type="button" tabIndex={-1} data-overlay-backdrop="" aria-label={`Close ${title}`} {...stylex.props(styles.backdrop)} initial={{ opacity: 0 }} animate={{ opacity: isPresent ? 1 : 0 }} transition={{ duration: shouldReduceMotion ? .1 : .2 }} onClick={requestClose} />
-    <motion.div ref={surfaceRef} data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide, isFullScreen && styles.fullSurface)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} onClickCapture={event => { if (hasDraggedRef.current) { event.preventDefault(); event.stopPropagation(); hasDraggedRef.current = false; } }}>
+    <motion.button type="button" tabIndex={-1} data-overlay-backdrop="" aria-label={`Close ${title}`} {...stylex.props(styles.backdrop)} style={swipeY ? { opacity: backdropOpacity } : undefined} initial={swipeY ? false : { opacity: 0 }} animate={swipeY ? undefined : { opacity: isPresent ? 1 : 0 }} transition={{ duration: shouldReduceMotion ? .1 : .2 }} onClick={requestClose} />
+    <motion.div ref={surfaceRef} data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide, isFullScreen && styles.fullSurface)} style={swipeY ? { y: swipeY, scale: swipeScale, borderRadius: swipeRadius } : undefined} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} onClickCapture={event => { if (hasDraggedRef.current) { event.preventDefault(); event.stopPropagation(); hasDraggedRef.current = false; } }}>
       {!isFullScreen && <div {...stylex.props(styles.dragHandle)} aria-hidden="true"><span {...stylex.props(styles.dragHandleBar)} /></div>}
       <div {...stylex.props(styles.dialogBody, isFullScreen && styles.fullBody)}>{children}</div>
     </motion.div>
