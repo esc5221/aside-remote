@@ -55,8 +55,13 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const previewUrlRef = useRef<string | undefined>(undefined)
   const panelRef = useRef<HTMLElement>(null)
   const backButtonRef = useRef<HTMLButtonElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelCloseRef = useRef<HTMLButtonElement>(null)
+  const wasClosingRef = useRef(false)
   const selectedTargetRef = useRef<string | undefined>(undefined)
   const selectedTabId = selectedTab?.targetId
+  const isClosingTab = busyAction === "close"
   const isSelectedTabAsleep = selectedTab?.loaded === false
   const isSelectedTabMissing = !!selectedTabId && !tabs.some((tab) => tab.targetId === selectedTabId)
 
@@ -70,11 +75,21 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
       selectedTargetRef.current = selectedTab.targetId
       backButtonRef.current?.focus({ preventScroll: true })
     } else if (selectedTargetRef.current) {
-      [...panelRef.current?.querySelectorAll<HTMLButtonElement>("[data-browser-tab]") ?? []]
-        .find((button) => button.dataset.browserTab === selectedTargetRef.current)?.focus({ preventScroll: true })
+      const buttons = [...panelRef.current?.querySelectorAll<HTMLButtonElement>("[data-browser-tab]") ?? []]
+      const target = buttons.find((button) => button.dataset.browserTab === selectedTargetRef.current) ?? buttons[0] ?? searchInputRef.current
+      target?.focus({ preventScroll: true })
       selectedTargetRef.current = undefined
     }
   }, [selectedTab?.targetId])
+
+  useLayoutEffect(() => {
+    if (isConfirmingClose) cancelCloseRef.current?.focus({ preventScroll: false })
+  }, [isConfirmingClose])
+
+  useLayoutEffect(() => {
+    if (wasClosingRef.current && !isClosingTab) closeButtonRef.current?.focus({ preventScroll: true })
+    wasClosingRef.current = isClosingTab
+  }, [isClosingTab])
 
   const loadTabs = useCallback(async (signal?: AbortSignal) => {
     const generation = ++listGenerationRef.current
@@ -89,7 +104,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
       )
       setTabs(sortedTabs)
       const initialTarget = initialTargetRef.current
-      setSelectedTab((current) => current ? sortedTabs.find((tab) => tab.targetId === current.targetId) ?? current : sortedTabs.find((tab) => tab.targetId === initialTarget))
+      setSelectedTab((current) => sortedTabs.find((tab) => tab.targetId === (current?.targetId ?? initialTarget)))
       if (sortedTabs.some((tab) => tab.targetId === initialTarget)) initialTargetRef.current = undefined
       setListError(undefined)
     } catch (error) {
@@ -145,7 +160,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
     return () => { captureGenerationRef.current += 1 }
   }, [selectedTabId])
 
-  useAutoRefresh(capturePreview, PREVIEW_REFRESH_INTERVAL_MS, !!selectedTabId && !isSelectedTabAsleep && !isSelectedTabMissing)
+  useAutoRefresh(capturePreview, PREVIEW_REFRESH_INTERVAL_MS, !!selectedTabId && !isSelectedTabAsleep && !isSelectedTabMissing && !isClosingTab)
 
   useEffect(() => {
     return () => {
@@ -165,7 +180,13 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
         notify("Opened a new copy of the tab.", "success")
         await loadTabs()
       } else {
-        await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}?${sessionQuery.slice(1)}`, { method: "DELETE" })
+        try {
+          await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}?${sessionQuery.slice(1)}`, { method: "DELETE", signal: AbortSignal.timeout(60_000) })
+        } catch (error) {
+          if (getErrorStatus(error) !== 404) throw error
+        }
+        listGenerationRef.current += 1
+        setTabs((current) => current.filter((tab) => tab.targetId !== selectedTab.targetId))
         notify("Tab closed.", "success")
         setSelectedTab(undefined)
         await loadTabs()
@@ -217,6 +238,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           {...stylex.props(styles.iconButton)}
           type="button"
           aria-label="Back to tabs"
+          disabled={!!busyAction}
           onClick={() => setSelectedTab(undefined)}
         >
           <ArrowLeft size={ICON_SIZE} strokeWidth={ICON_STROKE} />
@@ -256,7 +278,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           <button
             {...stylex.props(styles.primaryButton)}
             type="button"
-            disabled={!instruction.trim() || isSelectedTabAsleep || isSelectedTabMissing || previewStatus === "asleep" || previewStatus === "missing"}
+            disabled={!!busyAction || !instruction.trim() || isSelectedTabAsleep || isSelectedTabMissing || previewStatus === "asleep" || previewStatus === "missing"}
             onClick={() => {
               const task = instruction.trim()
               if (!task) return
@@ -267,24 +289,20 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           </button>
 
           <div {...stylex.props(styles.actionGrid)}>
-            <button {...stylex.props(styles.secondaryButton)} type="button" disabled={!!busyAction || selectedTab.loaded === false} onClick={() => void runTabAction("focus")}>
+            <button {...stylex.props(styles.secondaryButton)} type="button" disabled={!!busyAction || isSelectedTabAsleep || isSelectedTabMissing || previewStatus === "missing"} onClick={() => void runTabAction("focus")}>
               <Focus size={18} strokeWidth={ICON_STROKE} /> Focus
             </button>
             <button {...stylex.props(styles.secondaryButton)} type="button" disabled={!!busyAction} onClick={() => void runTabAction("open")}>
               <ExternalLink size={18} strokeWidth={ICON_STROKE} /> Open copy
             </button>
           </div>
-          {isConfirmingClose ? (
-            <div {...stylex.props(styles.confirmRow)}>
-              <span {...stylex.props(styles.confirmText)}>Close this Chrome tab?</span>
-              <button {...stylex.props(styles.textButton)} type="button" onClick={() => setIsConfirmingClose(false)}>Cancel</button>
-              <button {...stylex.props(styles.dangerButton)} type="button" disabled={!!busyAction} onClick={() => void runTabAction("close")}>Close tab</button>
-            </div>
-          ) : (
-            <button {...stylex.props(styles.deleteButton)} type="button" disabled={!!busyAction} onClick={() => setIsConfirmingClose(true)}>
-              <Trash2 size={18} strokeWidth={ICON_STROKE} /> Close tab
+          <div {...stylex.props(styles.confirmRow)}>
+            {isConfirmingClose && <span {...stylex.props(styles.confirmText)}>Close this tab?</span>}
+            {isConfirmingClose && <button ref={cancelCloseRef} {...stylex.props(styles.textButton)} type="button" disabled={!!busyAction} onClick={() => { setIsConfirmingClose(false); closeButtonRef.current?.focus({ preventScroll: true }) }}>Cancel</button>}
+            <button ref={closeButtonRef} {...stylex.props(isConfirmingClose ? styles.dangerButton : styles.deleteButton)} type="button" disabled={!!busyAction} aria-busy={isClosingTab} onClick={() => isConfirmingClose ? void runTabAction("close") : setIsConfirmingClose(true)}>
+              {!isConfirmingClose && <Trash2 size={18} strokeWidth={ICON_STROKE} />}{isClosingTab ? "Closing…" : "Close tab"}
             </button>
-          )}
+          </div>
         </div>
       ) : (
         <div {...stylex.props(styles.listView)}>
@@ -292,7 +310,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
             <label {...stylex.props(styles.searchBox)}>
               <Search size={18} strokeWidth={ICON_STROKE} />
               <span {...stylex.props(styles.srOnly)}>Search tabs</span>
-              <input {...stylex.props(styles.searchInput)} value={query} placeholder="Search tabs" onChange={(event) => setQuery(event.target.value)} />
+              <input ref={searchInputRef} {...stylex.props(styles.searchInput)} value={query} placeholder="Search tabs" onChange={(event) => setQuery(event.target.value)} />
             </label>
           </div>
           <div {...stylex.props(styles.meta)}>{availableTabs.length} tabs</div>
@@ -404,6 +422,7 @@ function getErrorStatus(error: unknown) {
 }
 
 function getErrorMessage(error: unknown) {
+  if (error instanceof DOMException && error.name === "TimeoutError") return formatRequestError({ status: 504 })
   if (getErrorStatus(error) === 404) return "This tab is no longer available."
   return formatRequestError({ message: error instanceof Error ? error.message : undefined })
 }
@@ -453,10 +472,10 @@ const styles = stylex.create({
   primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
   actionGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
   secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
-  deleteButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 0, backgroundColor: "transparent", color: tokens.danger, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
-  confirmRow: { minHeight: 52, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "4px 0" },
-  confirmText: { marginRight: "auto", color: tokens.muted, fontSize: '0.8125rem' },
-  dangerButton: { minHeight: 44, padding: "0 15px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.danger, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650 },
+  deleteButton: { minHeight: 44, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 0, backgroundColor: "transparent", color: tokens.danger, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
+  confirmRow: { minHeight: 52, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "4px 0" },
+  confirmText: { flexBasis: "100%", color: tokens.muted, fontSize: '0.8125rem' },
+  dangerButton: { minHeight: 44, padding: "0 15px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.danger, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650, whiteSpace: "nowrap" },
   textButton: { minHeight: 44, padding: "0 10px", borderWidth: 0, backgroundColor: "transparent", color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
   empty: { minHeight: 220, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, padding: 28, textAlign: "center", color: tokens.muted, fontSize: '0.875rem' },
   openDisclosure: { width: "100%", minHeight: 48, marginTop: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 16px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 14, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },

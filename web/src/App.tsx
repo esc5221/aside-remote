@@ -199,8 +199,8 @@ const styles = stylex.create({
   zoomHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   zoomImage: { display: 'block', maxWidth: '100%', maxHeight: '70dvh', margin: '0 auto', objectFit: 'contain', borderRadius: 12 },
   toasts: { position: 'fixed', top: 'calc(env(safe-area-inset-top) + 72px)', right: 16, left: 16, bottom: 'auto', margin: 0, width: 'auto', height: 'auto', borderWidth: 0, padding: 0, maxHeight: '40dvh', overflowY: 'auto', backgroundColor: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 10, pointerEvents: 'none' },
-  toast: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', minHeight: 48, width: 'fit-content', maxWidth: 'min(440px, 100%)', boxSizing: 'border-box', backgroundColor: tokens.text, color: tokens.canvas, borderRadius: 18, boxShadow: '0 4px 20px rgb(0 0 0 / .14)', pointerEvents: 'auto' },
+  toast: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 16px', minHeight: 48, width: 'fit-content', maxWidth: 'min(440px, 100%)', boxSizing: 'border-box', backgroundColor: tokens.text, color: tokens.canvas, borderRadius: 18, boxShadow: '0 4px 20px rgb(0 0 0 / .14)', pointerEvents: 'none' },
   toastMessage: { fontSize: '0.8125rem', lineHeight: 1.45, overflowWrap: 'anywhere', minWidth: 0 },
   toastIcon: { display: 'flex', flexShrink: 0 },
-  toastClose: { backgroundColor: 'transparent', color: 'inherit', borderWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0 },
+  toastClose: { backgroundColor: 'transparent', color: 'inherit', borderWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, pointerEvents: 'auto' },
 });
