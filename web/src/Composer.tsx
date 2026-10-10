@@ -97,6 +97,7 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     const uploads = sentAttachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []);
     draftRef.current = ''; setDraft('');
     attachmentRef.current = []; setAttachments([]);
+    input.current?.blur();
     const accepted = shouldQueue ? await chat.queue(sentDraft, uploads) : await chat.send(sentDraft, uploads, modelSelection.current);
     if (sentRevision !== revisionRef.current) return;
     if (!accepted) {
