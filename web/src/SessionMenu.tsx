@@ -43,7 +43,7 @@ export function SessionMenu({ target, chat, onClose, onRename, onDelete, notify 
 
   return <PopoverMenu anchor={target.anchor} point={target.point} label="Conversation options" onClose={onClose}>
     <p {...stylex.props(styles.title)}>{title}</p>
-    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); void chat.updateSession(target.id, { isPinned: !isPinned }); }}>{isPinned ? <PinOff size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Pin size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isPinned ? 'Unpin conversation' : 'Pin conversation'}</span></button>
+    <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); void chat.updateSession(target.id, { isPinned: !isPinned }); }}>{isPinned ? <PinOff {...stylex.props(styles.pin)} size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /> : <Pin {...stylex.props(styles.pin)} size={20} strokeWidth={ICON_STROKE} aria-hidden="true" />}<span>{isPinned ? 'Unpin conversation' : 'Pin conversation'}</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => { onClose(); onRename({ id: target.id, title }); }}><Pencil size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Rename</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => void share()}><Share2 size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Share session</span></button>
     <button type="button" role="menuitem" {...stylex.props(styles.action)} onClick={() => void copy(url, 'Session link copied.')}><Link size={20} strokeWidth={ICON_STROKE} aria-hidden="true" /><span>Copy link</span></button>
@@ -68,6 +68,7 @@ export function RenameConversation({ session, chat, onClose }: { session: Conver
 
 const styles = stylex.create({
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
+  pin: { color: tokens.primary },
   title: { margin: '4px 12px 8px', fontSize: '0.8125rem', lineHeight: 1.4, color: tokens.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   action: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, width: '100%', padding: '10px 12px', borderWidth: 0, borderRadius: 14, textAlign: 'left', color: tokens.text, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, fontSize: '0.875rem', lineHeight: 1.4 },
   formActions: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 },

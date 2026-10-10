@@ -104,7 +104,7 @@ export function ModelPicker({ selection, disabled, isRunning }: {
         {sortModels(selection.items.filter(model => model.provider === provider)).map(model => {
           const isSelected = model.id === selection.current?.modelId && model.provider === selection.current.provider;
           return <button key={model.id} type="button" aria-label={model.name + ', ' + provider} aria-pressed={isSelected} disabled={selection.isUpdating || disabled} {...stylex.props(styles.option, isSelected && styles.selected)} onClick={() => { close(); void selection.select(model); }}>
-            <span {...stylex.props(styles.name)}>{model.name}</span>{isSelected && <Check size={19} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            <span {...stylex.props(styles.name)}>{model.name}</span>{isSelected && <Check {...stylex.props(styles.check)} size={19} strokeWidth={ICON_STROKE} aria-hidden="true" />}
           </button>;
         })}
       </section>)}
@@ -134,4 +134,5 @@ const styles = stylex.create({
   provider: { color: tokens.muted, fontSize: '0.75rem', fontWeight: 500, margin: '0 12px 6px' },
   option: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, padding: '10px 12px', borderWidth: 0, borderRadius: 12, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text, textAlign: 'left', fontSize: '0.9375rem' },
   selected: { backgroundColor: tokens.surface },
+  check: { color: tokens.primary, flexShrink: 0 },
 });

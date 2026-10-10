@@ -47,7 +47,7 @@ export function Sidebar({ chat, isDrawer, onClose, onNew, onOpen, onSettings, on
         if (row.kind === 'heading') return <h2 {...stylex.props(styles.group)}>{row.group}</h2>;
         const session = row.session;
         return <div {...stylex.props(styles.session, session.id === chat.sessionId && styles.selected)}>
-          <button data-session-id={session.id} {...stylex.props(styles.sessionButton)} title={session.title || 'Untitled conversation'} aria-current={session.id === chat.sessionId ? 'page' : undefined} onClick={() => onOpen(session.id)}><span {...stylex.props(styles.sessionTitle)}>{session.title || 'Untitled conversation'}</span>{session.isPinned && <Pin size={13} strokeWidth={ICON_STROKE} aria-label="Pinned" />}{session.status === 'running' && <span {...stylex.props(styles.running)} role="img" aria-label="Running" />}</button>
+          <button data-session-id={session.id} {...stylex.props(styles.sessionButton)} title={session.title || 'Untitled conversation'} aria-current={session.id === chat.sessionId ? 'page' : undefined} onClick={() => onOpen(session.id)}><span {...stylex.props(styles.sessionTitle)}>{session.title || 'Untitled conversation'}</span>{session.isPinned && <Pin {...stylex.props(styles.pin)} size={13} strokeWidth={ICON_STROKE} aria-label="Pinned" />}{(session.status === 'running' || session.unread && session.id !== chat.sessionId) && <span {...stylex.props(styles.indicator)} role="img" aria-label={session.status === 'running' ? 'Running' : 'Unread'} />}</button>
           <button type="button" {...stylex.props(styles.options)} aria-label={'Options for ' + (session.title || 'conversation')} aria-haspopup="menu" onClick={event => onMenu({ id: session.id, title: session.title, anchor: event.currentTarget })}><Ellipsis size={17} strokeWidth={ICON_STROKE} aria-hidden="true" /></button>
         </div>;
       }} />}
@@ -84,11 +84,12 @@ const styles = stylex.create({
   sessionButton: { display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left', flex: 1, minWidth: 0, minHeight: 48, padding: '10px 4px 10px 12px', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '0.875rem' },
   sessionTitle: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   options: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 44, flexShrink: 0, borderWidth: 0, backgroundColor: 'transparent', color: tokens.muted },
-  running: { width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.text, flexShrink: 0 },
+  pin: { color: tokens.primary, flexShrink: 0 },
+  indicator: { width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.primary, flexShrink: 0 },
   bottom: { borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: tokens.border, padding: '10px 14px', flexShrink: 0 },
   nav: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, width: '100%', borderWidth: 0, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text, padding: '0 12px', borderRadius: 12, fontSize: '0.875rem', textAlign: 'left' },
-  connection: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#b0b0b0', marginLeft: 'auto' },
-  connected: { backgroundColor: '#2f7b49' },
+  connection: { width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.muted, marginLeft: 'auto' },
+  connected: { backgroundColor: tokens.primary },
   empty: { fontSize: '0.875rem', lineHeight: 1.6, color: tokens.muted, padding: 12 },
   more: { marginTop: 12, width: '100%', backgroundColor: 'transparent' },
 });

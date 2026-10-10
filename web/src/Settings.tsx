@@ -45,9 +45,9 @@ export function Settings({ chat, onClose, notify, notifications, isDarkMode, onT
       <p {...stylex.props(ui.muted)}>{notifications.unavailableReason || (notifications.status === 'denied' ? 'Allow notifications for Aside in your device settings.' : 'Get notified when a response finishes while you are away from the app. Tap a notification to open its conversation.')}</p>
       {notifications.status !== 'unavailable' && notifications.status !== 'denied' && <button type="button" {...stylex.props(ui.button)} disabled={notifications.isUpdating || notifications.status === 'checking' || !chat.isReady || !!chat.authError} onClick={() => { void (notifications.status === 'enabled' ? notifications.disable() : notifications.enable()); }}>{notifications.isUpdating ? 'Updating…' : notifications.status === 'enabled' ? 'Turn off notifications' : 'Enable notifications'}</button>}
     </section>
-    <section><h3 {...stylex.props(styles.heading)}>Appearance</h3><div {...stylex.props(styles.statusRow)}><span>Dark mode</span><motion.button type="button" role="switch" aria-label="Dark mode" aria-checked={isDarkMode} whileTap={shouldReduceMotion ? undefined : { scale: .94 }} onClick={onThemeToggle} {...stylex.props(styles.themeSwitch)}><motion.span animate={{ backgroundColor: isDarkMode ? 'var(--text)' : 'var(--hover)' }} transition={{ duration: shouldReduceMotion ? 0 : .18 }} {...stylex.props(styles.switchTrack)}><motion.span animate={{ x: isDarkMode ? 20 : 0 }} transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 34 }} {...stylex.props(styles.switchThumb)} /></motion.span></motion.button></div>
+    <section><h3 {...stylex.props(styles.heading)}>Appearance</h3><div {...stylex.props(styles.statusRow)}><span>Dark mode</span><motion.button type="button" role="switch" aria-label="Dark mode" aria-checked={isDarkMode} whileTap={shouldReduceMotion ? undefined : { scale: .94 }} onClick={onThemeToggle} {...stylex.props(styles.themeSwitch)}><motion.span animate={{ backgroundColor: isDarkMode ? 'var(--primary)' : 'var(--hover)' }} transition={{ duration: shouldReduceMotion ? 0 : .18 }} {...stylex.props(styles.switchTrack)}><motion.span animate={{ x: isDarkMode ? 20 : 0 }} transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 34 }} {...stylex.props(styles.switchThumb)} /></motion.span></motion.button></div>
       <div {...stylex.props(styles.statusRow)}><label htmlFor="text-size">Text size</label><select id="text-size" value={textSize} onChange={event => onTextSizeChange(Number(event.target.value))} {...stylex.props(styles.textSize)}>{TEXT_SIZES.map(size => <option key={size} value={size}>{size}%</option>)}</select></div>
-      <div {...stylex.props(styles.statusRow)}><span>Wanted Sans</span><span className="sr-only">Selected font</span><Check aria-hidden="true" size={18} strokeWidth={ICON_STROKE} /></div></section>
+      <div {...stylex.props(styles.statusRow)}><span>Wanted Sans</span><span className="sr-only">Selected font</span><Check {...stylex.props(styles.check)} aria-hidden="true" size={18} strokeWidth={ICON_STROKE} /></div></section>
   </div>;
 }
 
@@ -56,10 +56,11 @@ const styles = stylex.create({
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   heading: { fontSize: '0.875rem', fontWeight: 600, margin: '0 0 12px' },
   statusRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, paddingTop: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border, fontSize: '0.875rem', overflowWrap: 'anywhere' },
+  check: { color: tokens.primary },
   textSize: { minHeight: 44, maxWidth: '100%', borderWidth: 0, padding: '0 8px', borderRadius: 12, backgroundColor: tokens.surface, color: tokens.text },
   actions: { display: 'flex', gap: 8, marginTop: 16 },
   save: { width: '100%', marginTop: 12 },
   themeSwitch: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 44, borderWidth: 0, padding: 0, backgroundColor: 'transparent' },
   switchTrack: { display: 'flex', alignItems: 'center', width: 48, height: 28, padding: 4, borderRadius: 20, backgroundColor: tokens.hover },
-  switchThumb: { width: 20, height: 20, borderRadius: '50%', backgroundColor: tokens.canvas, boxShadow: '0 1px 3px rgb(0 0 0 / .2)' },
+  switchThumb: { width: 20, height: 20, borderRadius: '50%', backgroundColor: tokens.primaryForeground, boxShadow: '0 1px 3px rgb(0 0 0 / .2)' },
 });

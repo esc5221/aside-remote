@@ -210,7 +210,7 @@ export const styles = stylex.create({
   row: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 },
   field: { width: '100%', minWidth: 0, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, borderRadius: 14, padding: '12px 14px', backgroundColor: tokens.surface, color: tokens.text, fontSize: '1rem', lineHeight: 1.5 },
   button: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, borderRadius: 14, minHeight: 44, padding: '10px 16px', fontSize: '0.875rem', fontWeight: 550, backgroundColor: { default: tokens.canvas, ':hover': tokens.surface }, color: tokens.text },
-  primary: { backgroundColor: { default: tokens.text, ':hover': tokens.primaryHover }, color: tokens.canvas, borderColor: tokens.text },
+  primary: { backgroundColor: { default: tokens.primary, ':hover': tokens.primaryHover }, color: tokens.primaryForeground, borderColor: tokens.primary },
   danger: { color: tokens.danger },
   muted: { fontSize: '0.875rem', lineHeight: 1.6, color: tokens.muted },
 });

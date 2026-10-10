@@ -491,7 +491,7 @@ const styles = stylex.create({
   previewBar: { minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
   status: { minWidth: 0, color: tokens.muted, fontSize: '0.75rem', overflowWrap: "anywhere" },
   textarea: { width: "100%", minHeight: 88, resize: "vertical", padding: "13px 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 14, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem', lineHeight: 1.45 },
-  primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
+  primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: { default: tokens.primary, ":hover": tokens.primaryHover }, color: tokens.primaryForeground, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
   actionGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
   secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600, textDecoration: "none" },
   deleteButton: { minHeight: 44, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 0, backgroundColor: "transparent", color: tokens.danger, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
@@ -505,6 +505,6 @@ const styles = stylex.create({
   openLabel: { display: "block", marginBottom: 8, color: tokens.text, fontSize: '0.875rem', fontWeight: 650 },
   openRow: { display: "flex", gap: 8 },
   openInput: { minWidth: 0, minHeight: 44, flex: 1, padding: "0 12px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 11, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem' },
-  openButton: { minWidth: 70, minHeight: 44, padding: "0 14px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650 },
+  openButton: { minWidth: 70, minHeight: 44, padding: "0 14px", borderWidth: 0, borderRadius: 999, backgroundColor: { default: tokens.primary, ":hover": tokens.primaryHover }, color: tokens.primaryForeground, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650 },
   srOnly: { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", borderWidth: 0 },
 })

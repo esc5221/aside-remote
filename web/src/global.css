@@ -23,7 +23,8 @@
     --glass-shadow: inset 0 1px 1px rgb(255 255 255 / .7), 0 4px 20px rgb(0 0 0 / .06);
     --canvas: #ffffff; --surface: #f7f7f7; --bubble: #f1f1f1; --text: #171717;
     --muted: #666666; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
-    --control-border: #dcdcdc; --primary-hover: #333333; --selection: #d8eaff;
+    --primary: #a34dff; --primary-foreground: #ffffff; --primary-hover: color-mix(in srgb, var(--primary), black 12%);
+    --control-border: #dcdcdc; --selection: color-mix(in srgb, var(--primary) 20%, var(--canvas));
     --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #855b00; --syntax-title: #205cc9;
     --font-code: "D2Coding", monospace; --code-line-height: 1.4;
     color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%; font-size: var(--text-size, 100%);
@@ -31,7 +32,7 @@
   html[data-theme="dark"] {
     --canvas: #000000; --surface: #141414; --bubble: #181818; --text: #f3f3f3;
     --muted: #999999; --border: #343434; --hover: #303030; --danger: #ff9b91;
-    --control-border: #414141; --primary-hover: #d9d9d9; --selection: #34516e;
+    --control-border: #414141;
     --glass: rgb(24 24 24 / .68); --glass-border: rgb(255 255 255 / .12);
     --glass-shadow: inset 0 1px 1px rgb(255 255 255 / .1), 0 4px 20px rgb(0 0 0 / .16);
     --syntax-keyword: #dda5df; --syntax-string: #a7d6a7; --syntax-number: #e5c07b; --syntax-title: #9ec4ff;

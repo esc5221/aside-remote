@@ -111,7 +111,7 @@ const styles = stylex.create({
   editInput: { display: 'block', width: '100%', maxHeight: 160, minHeight: 72, resize: 'none', padding: 0, borderWidth: 0, color: tokens.text, backgroundColor: 'transparent', fontFamily: tokens.font, fontSize: '1rem', lineHeight: 1.55, overflowWrap: 'anywhere' },
   editActions: { display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 8 },
   textButton: { minHeight: 36, padding: '0 12px', borderWidth: 0, borderRadius: 18, backgroundColor: 'transparent', color: tokens.text, fontSize: '0.8125rem', fontFamily: tokens.font, fontWeight: 600 },
-  saveButton: { backgroundColor: tokens.text, color: tokens.canvas },
+  saveButton: { backgroundColor: tokens.primary, color: tokens.primaryForeground },
   attachments: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   image: { width: 100, maxWidth: '100%', height: 100, objectFit: 'cover', borderRadius: 16 },
   error: { margin: 0, fontSize: '0.8125rem', color: tokens.danger, overflowWrap: 'anywhere' },
