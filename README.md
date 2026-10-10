@@ -15,8 +15,9 @@ What you get:
 
 - **Chat UI** for your Aside agent — conversation list (search, paging), live response
   fragments with linked citations and folded tool activity, image attachments (camera on phones),
-  markdown/code rendering, a mobile-first monochrome interface with light/dark mode,
-  Wanted Sans, outline icons, and Motion sheet/drawer transitions. Change the theme in Settings → Appearance; the choice persists after reload.
+  markdown/code rendering, a mobile-first monochrome interface with theme presets
+  (system / light / dark / Linear dark) and your own CSS (see [Themes](#themes)),
+  a selectable response font, outline icons, and Motion sheet/drawer transitions.
 - **Follow-up messages** — send during a response to queue the next turn. Queued
   messages appear as conversation bubbles; their menu can edit, steer the current
   response, or cancel the message. Stopping a response pauses its queue until resumed.
@@ -147,6 +148,47 @@ chrome.* in repl       tabs.query allowed (that's where lastAccessed for tab ord
 ```
 
 An Aside update can invalidate any line above. If something breaks, check these first.
+
+## Themes
+
+Settings → Appearance picks a preset — System (follows the OS light/dark setting), Light,
+Dark or Linear dark — and the response font (Wanted Sans by default; serif and system
+options included). Both are stored per browser.
+
+For anything beyond the presets, create `~/.aside-remote/theme.css` on the Mac running the
+bridge (path overridable with `ASIDE_REMOTE_THEME_CSS`). It is served at `/theme.css` and
+loaded outside the app's CSS layers, so it applies to every device and always wins over the
+presets. No rebuild or restart needed — reload the page.
+
+Every color is a CSS variable on `html`; override those rather than component class names
+(StyleX generates them, so they change between builds):
+
+```css
+/* ~/.aside-remote/theme.css */
+html { --text: #1b2a22; --selection: #cdebd9; }                 /* every preset */
+html[data-theme="dark"] { --canvas: #101418; --surface: #161b21; } /* only the dark preset */
+```
+
+`<html data-theme>` always holds the theme actually drawn (`light`, `dark` or `linear`),
+never `auto`, so you can target one preset. Set `color-scheme: dark` in a custom dark
+palette so embedded visuals and native controls follow.
+
+```
+variable                              role
+--canvas --surface --bubble           page / panels and menus / user bubble, inline code
+--text --muted                        primary / secondary text (--text is also the primary button)
+--border --control-border --hover     dividers / input borders / hover fill
+--primary-hover --danger --selection  primary button hover / destructive / text selection
+--status-ok --status-off              connection dot
+--syntax-keyword --syntax-string --syntax-number --syntax-title   code + chart colors
+--font-body                           response text font (also set from Settings)
+--font-code --code-line-height        code blocks (D2Coding)
+--text-size                           root text size (also set from Settings)
+```
+
+New presets are welcome as PRs: add an `html[data-theme="<id>"]` block in
+`web/src/global.css`, an entry in `THEMES` in `web/src/theme.ts`, and the id to the
+pre-paint list in `web/index.html`. Please keep layout changes out of theme PRs.
 
 ## Development
 

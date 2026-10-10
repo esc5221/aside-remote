@@ -293,6 +293,21 @@ async def icon(name: str):
 
 
 # ------------------------------------------------------------------ 폰트
+@app.get("/api/font/list")
+async def font_list():
+    """설정 화면이 고를 수 있는 본문 폰트 목록."""
+    return {"fonts": fonts.catalog()}
+
+
+@app.get("/theme.css")
+async def theme_css():
+    """사용자 테마. 이 맥의 파일이라 그대로 내보낸다. 없으면 빈 CSS — 404 를 내면 콘솔이 시끄럽다."""
+    if config.THEME_CSS.is_file():
+        return FileResponse(config.THEME_CSS, media_type="text/css; charset=utf-8",
+                            headers={"Cache-Control": "no-cache"})
+    return Response("", media_type="text/css; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/api/font/css/{font_id}")
 async def font_css(font_id: str):
     """폰트 CSS. 폰트 파일 URL 은 브리지 경유로 치환되어 나간다 → 브라우저는 서드파티를 안 본다."""
@@ -645,12 +660,22 @@ def _validated_attachments(payload: dict) -> list[dict]:
 
 
 # ------------------------------------------------------------------ 미디어
+# 에이전트·업로드가 만든 파일은 신뢰할 수 없다. HTML/SVG 가 브리지와 같은 출처에서 열리면
+# 그 스크립트가 localStorage 의 토큰을 읽고 API 를 부를 수 있다 → 샌드박스로 출처를 떼고 스크립트를 막는다.
+# 이미지·텍스트 표시는 그대로다.
+UNTRUSTED_FILE_HEADERS = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
+
+
+def _untrusted_file(p, headers: dict | None = None) -> FileResponse:
+    return FileResponse(p, headers={**UNTRUSTED_FILE_HEADERS, **(headers or {})})
+
+
 @app.get("/api/media/{media_id}", dependencies=[Auth])
 async def api_media(media_id: str):
     p = sessions.media_path(media_id)
     if not p:
         raise HTTPException(404, "not found")
-    return FileResponse(p, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return _untrusted_file(p, {"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.get("/api/sessions/{session_id}/file/{rel:path}", dependencies=[Auth])
@@ -659,7 +684,7 @@ async def api_session_file(session_id: str, rel: str):
     p = sessions.session_file(session_id, rel)
     if not p:
         raise HTTPException(404, "not found")
-    return FileResponse(p)
+    return _untrusted_file(p)
 
 
 @app.get("/api/sessions/{session_id}/artifacts", dependencies=[Auth])
@@ -684,7 +709,7 @@ async def api_artifact(session_id: str, name: str):
     p = d / "artifacts" / name
     if not p.exists():
         raise HTTPException(404, "not found")
-    return FileResponse(p)
+    return _untrusted_file(p)
 
 
 # ------------------------------------------------------------------ 첨부
@@ -717,7 +742,7 @@ async def api_upload_get(fid: str):
     p = uploads.path_of(fid)
     if not p:
         raise HTTPException(404, "not found")
-    return FileResponse(p, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return _untrusted_file(p, {"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 # ------------------------------------------------------------------ 탭

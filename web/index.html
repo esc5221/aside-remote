@@ -13,6 +13,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/api/font/css/wanted-sans" />
     <link rel="license" href="/src/assets/fonts/D2Coding.OFL.txt" />
+    <script>
+      // 첫 페인트 전에 테마를 정한다 (규칙은 src/theme.ts 와 같다).
+      // 사용자 테마 ~/.aside-remote/theme.css 는 레이어 밖 CSS 라서 앱 스타일(@layer)보다 항상 이긴다.
+      (function () {
+        var t = 'auto';
+        try { t = localStorage.getItem('asideTheme') || 'auto'; } catch (e) {}
+        if (['light', 'dark', 'linear'].indexOf(t) < 0) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+        var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/theme.css';
+        document.head.appendChild(l);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

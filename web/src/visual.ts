@@ -4,8 +4,9 @@ export function visualTheme() {
   const root = document.documentElement;
   const style = getComputedStyle(root);
   const color = (name: string) => style.getPropertyValue(name).trim();
-  const isDark = root.dataset.theme === 'dark';
-  const success = isDark ? '#a7d6a7' : '#36713b';
+  // 다크 여부와 차트 색은 테마 변수에서 온다 — 프리셋과 사용자 theme.css 를 그대로 따라간다.
+  const isDark = style.getPropertyValue('color-scheme').includes('dark');
+  const success = color('--syntax-string');
   return {
     scheme: isDark ? 'dark' : 'light',
     variables: {
@@ -14,8 +15,8 @@ export function visualTheme() {
       '--surface-primary': color('--surface'), '--surface-secondary': color('--bubble'),
       '--primary': color('--text'), '--primary-foreground': color('--canvas'),
       '--destructive': color('--danger'), '--ring': color('--control-border'),
-      '--chart-1': isDark ? '#9ec4ff' : '#205cc9', '--chart-2': success,
-      '--chart-3': isDark ? '#e5c07b' : '#855b00', '--chart-4': isDark ? '#dda5df' : '#a626a4',
+      '--chart-1': color('--syntax-title'), '--chart-2': success,
+      '--chart-3': color('--syntax-number'), '--chart-4': color('--syntax-keyword'),
       '--chart-5': color('--danger'), '--success': success,
       '--font-sans': '"Wanted Sans Variable", "Wanted Sans", sans-serif', '--radius': '12px',
     },

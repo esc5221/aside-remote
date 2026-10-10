@@ -21,7 +21,9 @@
     --muted: #666666; --border: #e9e9e9; --hover: #ededed; --danger: #b42318;
     --control-border: #dcdcdc; --primary-hover: #333333; --selection: #d8eaff;
     --syntax-keyword: #a626a4; --syntax-string: #36713b; --syntax-number: #855b00; --syntax-title: #205cc9;
+    --status-off: #b0b0b0; --status-ok: #2f7b49;
     --font-code: "D2Coding", monospace; --code-line-height: 1.4;
+    --font-body: "Wanted Sans Variable", "Wanted Sans", sans-serif;
     color-scheme: light; background: var(--canvas); -webkit-text-size-adjust: 100%; font-size: var(--text-size, 100%);
   }
   html[data-theme="dark"] {
@@ -29,6 +31,16 @@
     --muted: #b4b4b4; --border: #414141; --hover: #3b3b3b; --danger: #ff9b91;
     --control-border: #4b4b4b; --primary-hover: #d9d9d9; --selection: #34516e;
     --syntax-keyword: #dda5df; --syntax-string: #a7d6a7; --syntax-number: #e5c07b; --syntax-title: #9ec4ff;
+    --status-off: #6f6f6f; --status-ok: #4fa96a;
+    color-scheme: dark;
+  }
+  /* Linear 계열 차콜 + 라벤더 (PR #1 의 토큰) */
+  html[data-theme="linear"] {
+    --canvas: #0f1011; --surface: #191a1b; --bubble: #23252a; --text: #f7f8f8;
+    --muted: #8a8f98; --border: #23252a; --hover: #23252a; --danger: #e5484d;
+    --control-border: #34343a; --primary-hover: #828fff; --selection: #3a3f7a;
+    --syntax-keyword: #828fff; --syntax-string: #9ec27f; --syntax-number: #d9b06a; --syntax-title: #7fb3d5;
+    --status-off: #6f6f6f; --status-ok: #30a46c;
     color-scheme: dark;
   }
   body, button, input, textarea, select { font-family: "Wanted Sans Variable", "Wanted Sans", sans-serif; }
@@ -48,7 +60,7 @@
   .queued-message-menu:popover-open { opacity: 1; }
   @starting-style { .queued-message-menu:popover-open { opacity: 0; } }
   ::selection { background: var(--selection); }
-  .markdown { font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
+  .markdown { font-family: var(--font-body); font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; min-width: 0; }
   .markdown > :first-child { margin-top: 0; }
   .markdown > :last-child { margin-bottom: 0; }
   .markdown p { margin: 0 0 16px; white-space: pre-wrap; }

@@ -51,8 +51,8 @@ const styles = stylex.create({
   running: { width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.text, flexShrink: 0 },
   bottom: { borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: tokens.border, padding: '10px 14px', flexShrink: 0 },
   nav: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, width: '100%', borderWidth: 0, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text, padding: '0 12px', borderRadius: 12, fontSize: '0.875rem', textAlign: 'left' },
-  connection: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#b0b0b0', marginLeft: 'auto' },
-  connected: { backgroundColor: '#2f7b49' },
+  connection: { width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--status-off)', marginLeft: 'auto' },
+  connected: { backgroundColor: 'var(--status-ok)' },
   empty: { fontSize: '0.875rem', lineHeight: 1.6, color: tokens.muted, padding: 12 },
   more: { marginTop: 12, width: '100%', backgroundColor: 'transparent' },
 });

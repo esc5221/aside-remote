@@ -61,7 +61,26 @@ check('no boot errors', runtimeErrors.length === 0);
 check('conversation list rendered', document.querySelectorAll('aside[aria-label="Conversations"]').length === 1);
 check('settings refresh restores the last conversation in the background', location.pathname === '/settings' && document.querySelector('[aria-current="page"]')?.textContent.includes('Beta'));
 check('restored messages rendered', document.querySelector('[aria-label="Your message"]')?.textContent.includes('Inspect this'));
-click(document.querySelector('dialog[aria-label="Settings"] button[aria-label="Close"]'));
+
+console.log('appearance: theme presets and response font');
+const settingsDialog = document.querySelector('dialog[aria-label="Settings"]');
+const themeOptions = [...settingsDialog.querySelectorAll('[role="radiogroup"][aria-label="Theme"] [role="radio"]')];
+check('four theme presets offered', themeOptions.map(option => option.textContent).join('|') === 'System|Light|Dark|Linear dark');
+check('system is the default', themeOptions[0].getAttribute('aria-checked') === 'true' && document.documentElement.dataset.theme === 'light');
+click(themeOptions.find(option => option.textContent === 'Linear dark'));
+await waitFor(() => document.documentElement.dataset.theme === 'linear');
+check('linear preset applied and saved', localStorage.getItem('asideTheme') === 'linear');
+click([...settingsDialog.querySelectorAll('[role="radio"]')].find(option => option.textContent === 'System'));
+await waitFor(() => document.documentElement.dataset.theme === 'light');
+check('system resolves to the OS scheme', localStorage.getItem('asideTheme') === 'auto');
+const fontSelect = settingsDialog.querySelector('select#body-font');
+await waitFor(() => fontSelect.options.length === 2);
+Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(fontSelect, 'system-serif');
+fontSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+await waitFor(() => document.documentElement.style.getPropertyValue('--font-body') === 'ui-serif, serif');
+check('response font applied and saved', localStorage.getItem('asideFont') === 'system-serif' && !document.getElementById('body-font-css') && !!settingsDialog.querySelector('select#body-font'));
+check('no appearance errors', runtimeErrors.length === 0);
+click(settingsDialog.querySelector('button[aria-label="Close"]'));
 await waitFor(() => location.pathname === '/c/BBB');
 
 console.log('activity state and mobile drawer');
@@ -183,6 +202,10 @@ function installFetch(targetWindow) {
       if (fs.existsSync(assetPath)) return new Response(fs.readFileSync(assetPath));
     }
     if (url.pathname === '/api/web-token') return response({ token: 'test-token', via: 'loopback' });
+    if (url.pathname === '/api/font/list') return response({ fonts: [
+      { id: 'wanted-sans', label: 'Wanted Sans', kind: 'sans', webfont: true, stack: '"Wanted Sans Variable", sans-serif' },
+      { id: 'system-serif', label: 'System serif', kind: 'serif', webfont: false, stack: 'ui-serif, serif' },
+    ] });
     if (url.pathname === '/api/sessions' && method === 'GET') {
       const query = (url.searchParams.get('q') || '').toLowerCase();
       const items = sessions.filter(item => !query || item.title.toLowerCase().includes(query) || item.preview.toLowerCase().includes(query));

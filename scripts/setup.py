@@ -184,6 +184,24 @@ def uninstall_service() -> None:
     say(OK, "service removed")
 
 
+# ---------------------------------------------------------------- frontend
+def build_frontend() -> bool:
+    """web/dist 는 커밋하지 않는다 — 설치·업데이트 때마다 여기서 빌드한다."""
+    print("\nFrontend build")
+    npm = shutil.which("npm")
+    if not npm:
+        say(BAD, "npm not found — install Node.js 22.22.2+ / 24.15.0+ / 26+, "
+                 "then run `npm ci && npm run build` in the repo")
+        return False
+    for cmd in (["ci", "--no-audit", "--no-fund"], ["run", "build"]):
+        r = subprocess.run([npm, *cmd], cwd=REPO, capture_output=True, text=True)
+        if r.returncode != 0:
+            say(BAD, f"npm {' '.join(cmd)} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+            return False
+    say(OK, f"built {REPO / 'web/dist'}")
+    return True
+
+
 # ---------------------------------------------------------------- main
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -204,6 +222,9 @@ def main() -> int:
         return 1
     ensure_token()
     configure(a.yes)
+    if not build_frontend():
+        print("\nfix the frontend build, then re-run.")
+        return 1
 
     print("\n[5/5] Run it")
     if sys.platform == "darwin" and yesno("Install as a launchd service (auto-start)?",

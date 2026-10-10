@@ -16,6 +16,7 @@ export default defineConfig({
       '/icons': 'http://127.0.0.1:8800',
       '/vendor': 'http://127.0.0.1:8800',
       '/sw.js': 'http://127.0.0.1:8800',
+      '/theme.css': 'http://127.0.0.1:8800',
       '/manifest.webmanifest': 'http://127.0.0.1:8800'
     }
   }
