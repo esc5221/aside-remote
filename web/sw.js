@@ -5,7 +5,7 @@ self.addEventListener('push', event => {
   let notification;
   try { notification = event.data?.json()?.notification; } catch { }
   const target = conversationUrl(notification?.navigate);
-  event.waitUntil(self.registration.showNotification(notification?.title || 'Aside', {
+  event.waitUntil(self.registration.showNotification(notification?.title || 'New response', {
     body: notification?.body || 'Your response is ready. Tap to open the conversation.',
     icon: '/icons/icon-192.png',
     tag: notification?.tag,
@@ -20,8 +20,20 @@ self.addEventListener('notificationclick', event => {
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of clients) {
       if (new URL(client.url).origin !== target.origin) continue;
-      const destination = await client.navigate(target.href);
-      if (destination) { await destination.focus(); return; }
+      try {
+        const didOpen = await new Promise(resolve => {
+          const channel = new MessageChannel();
+          const timeout = setTimeout(() => { channel.port1.close(); resolve(false); }, 1_000);
+          channel.port1.onmessage = event => {
+            clearTimeout(timeout);
+            channel.port1.close();
+            resolve(event.data === target.pathname);
+          };
+          client.postMessage({ type: 'open-conversation', url: target.href }, [channel.port2]);
+        });
+        const destination = didOpen ? client : await client.navigate(target.href);
+        if (destination) { await destination.focus(); return; }
+      } catch { }
     }
     await self.clients.openWindow(target.href);
   })());

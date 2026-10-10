@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 import browser
 import cfaccess
 import config
+import conversation_pins
 import daemondb
 import fonts
 import followups
@@ -35,6 +36,7 @@ import uploads
 import runner
 import sessions
 import web_push
+from daemon import ACCOUNT_ID, daemon
 from mcp_client import ReplError, mcp
 
 logging.basicConfig(
@@ -85,6 +87,102 @@ async def require_auth(request: Request) -> None:
 
 
 Auth = Depends(require_auth)
+
+
+@app.get("/api/sessions/{session_id}/details", dependencies=[Auth])
+async def api_session_details(session_id: str):
+    if sessions.session_dir(session_id) is None:
+        raise HTTPException(404, "unknown session")
+    try:
+        session = await daemon.call("sessions.get", {"accountId": ACCOUNT_ID, "sessionId": session_id})
+        pins = await asyncio.to_thread(conversation_pins.pinned_ids)
+        return {"id": session_id, "title": session.get("title") or "Conversation",
+                "status": session["status"], "isPinned": session_id in pins}
+    except Exception:
+        log.exception("conversation details failed session=%s", session_id)
+        raise HTTPException(502, "Could not load conversation options.")
+
+
+@app.patch("/api/sessions/{session_id}", dependencies=[Auth])
+async def api_update_session(session_id: str, payload: dict):
+    if not payload or not set(payload).issubset({"title", "isPinned"}):
+        raise HTTPException(400, "invalid conversation settings")
+    title = payload.get("title")
+    if "title" in payload and (not isinstance(title, str) or not title.strip() or len(title.strip()) > 120):
+        raise HTTPException(400, "Use a conversation name between 1 and 120 characters.")
+    if "isPinned" in payload and not isinstance(payload["isPinned"], bool):
+        raise HTTPException(400, "invalid pin setting")
+    async with runner.session_lock:
+        if sessions.session_dir(session_id) is None:
+            raise HTTPException(404, "unknown session")
+        try:
+            if title is not None:
+                await daemon.call("sessions.update", {"accountId": ACCOUNT_ID, "sessionId": session_id,
+                    "title": title.strip()}, mutation=True)
+            if "isPinned" in payload:
+                await asyncio.to_thread(conversation_pins.set_pinned, session_id, payload["isPinned"])
+            return await api_session_details(session_id)
+        except HTTPException:
+            raise
+        except Exception:
+            log.exception("conversation update failed session=%s", session_id)
+            raise HTTPException(502, "Could not update the conversation.")
+
+
+@app.get("/api/models", dependencies=[Auth])
+async def api_models(session_id: str | None = None):
+    try:
+        available = await daemon.call("models.listAvailable", {"accountId": ACCOUNT_ID})
+        if session_id:
+            if sessions.session_dir(session_id) is None:
+                raise HTTPException(404, "unknown session")
+            session = await daemon.call("sessions.get", {"accountId": ACCOUNT_ID, "sessionId": session_id})
+            current = session["model"]
+        else:
+            current = await daemon.call("settings.get", {"accountId": ACCOUNT_ID, "key": "defaultModel"})
+        return {"items": [{"id": model["id"], "name": model["name"], "provider": model["provider"],
+                           "thinkingLevels": model["availableThinkingLevels"],
+                           "supportsFastMode": model["supportsFastMode"]} for model in available],
+                "current": current}
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("model list failed")
+        raise HTTPException(502, "Could not load models.")
+
+
+@app.put("/api/sessions/{session_id}/model", dependencies=[Auth])
+async def api_select_model(session_id: str, payload: dict):
+    if not isinstance(payload.get("provider"), str) or not isinstance(payload.get("modelId"), str):
+        raise HTTPException(400, "invalid model")
+    try:
+        available = await daemon.call("models.listAvailable", {"accountId": ACCOUNT_ID})
+        selected = next((model for model in available if model["id"] == payload["modelId"]
+                         and model["provider"] == payload["provider"]), None)
+        if selected is None:
+            raise HTTPException(400, "This model is not available.")
+        levels = selected["availableThinkingLevels"]
+        thinking_level = payload.get("thinkingLevel")
+        if thinking_level is not None and thinking_level not in levels:
+            raise HTTPException(400, "This reasoning effort is not available for this model.")
+        async with runner.session_lock:
+            if sessions.session_dir(session_id) is None:
+                raise HTTPException(404, "unknown session")
+            session = await daemon.call("sessions.get", {"accountId": ACCOUNT_ID, "sessionId": session_id})
+            current = session["model"]
+            model = {"provider": selected["provider"], "modelId": selected["id"],
+                     "thinkingLevel": thinking_level if thinking_level is not None
+                         else current["thinkingLevel"] if current["thinkingLevel"] in levels
+                         else "high" if "high" in levels else levels[0],
+                     "fastMode": bool(current["fastMode"] and selected["supportsFastMode"])}
+            updated = await daemon.call("sessions.update", {"accountId": ACCOUNT_ID,
+                "sessionId": session_id, "model": model}, mutation=True)
+        return updated["model"]
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("model change failed session=%s", session_id)
+        raise HTTPException(502, "Could not change the model.")
 
 
 @app.exception_handler(browser.TooBusy)
@@ -415,6 +513,7 @@ async def api_delete_session(session_id: str):
             raise HTTPException(502, "Aside could not delete the conversation. Refresh the list and try again.")
     await hub.forget_session(session_id)
     await followup_queue.clear(session_id)
+    await asyncio.to_thread(conversation_pins.set_pinned, session_id, False)
     return {"deleted": True, "sessionId": session_id}
 
 
@@ -954,7 +1053,14 @@ class Hub:
                              and type(message.get("ts")) in (int, float)
                              and message["ts"] <= run.finished_at * 1000), "")
             if not run.is_aborted:
+                title = "New response"
+                try:
+                    session = await daemon.call("sessions.get", {"accountId": ACCOUNT_ID, "sessionId": session_id})
+                    title = session.get("title") or title
+                except Exception:
+                    log.warning("notification title unavailable session=%s", session_id, exc_info=True)
                 await push_notifications.complete(session_id, run.stream_id, text=text,
+                                                  title=title,
                                                   has_error=bool(run.error or run.exit_code))
         except Exception:
             log.exception("Could not prepare response notification.")

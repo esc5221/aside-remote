@@ -10,13 +10,15 @@ import {
   X,
 } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { AnimatePresence } from "motion/react"
 import { formatRequestError } from "./errors"
 
 import { tokens } from "./tokens.stylex"
 import { focusDialogSurface } from "./ui"
 import { useAutoRefresh } from "./useAutoRefresh"
 import type { BrowserTab } from "./types"
-import { isTabResponse } from "./browser"
+import { getWebsiteUrl, isTabResponse, OPEN_IN_BROWSER_LABEL } from "./browser"
+import { ImagePreview } from "./ImagePreview"
 
 const TAB_REFRESH_INTERVAL_MS = 2_000
 const PREVIEW_REFRESH_INTERVAL_MS = 1_000
@@ -46,8 +48,11 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const [instruction, setInstruction] = useState("")
   const [isOpenFormVisible, setIsOpenFormVisible] = useState(false)
   const [newTabUrl, setNewTabUrl] = useState("")
+  const [openingTabs, setOpeningTabs] = useState<{ id: string; url: string }[]>([])
+  const closingTabsRef = useRef(new Set<string>())
   const [previewUrl, setPreviewUrl] = useState<string>()
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle")
+  const [isPreviewExpanded, setPreviewExpanded] = useState(false)
   const [busyAction, setBusyAction] = useState<string>()
   const [isConfirmingClose, setIsConfirmingClose] = useState(false)
   const listGenerationRef = useRef(0)
@@ -61,6 +66,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const wasClosingRef = useRef(false)
   const selectedTargetRef = useRef<string | undefined>(undefined)
   const selectedTabId = selectedTab?.targetId
+  const websiteUrl = selectedTab && getWebsiteUrl(selectedTab.url)
   const isClosingTab = busyAction === "close"
   const isSelectedTabAsleep = selectedTab?.loaded === false
   const isSelectedTabMissing = !!selectedTabId && !tabs.some((tab) => tab.targetId === selectedTabId)
@@ -99,7 +105,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
       const value: unknown = await response.json()
       if (signal?.aborted || generation !== listGenerationRef.current) return
       if (!isTabResponse(value)) throw new Error("Invalid tab list.")
-      const sortedTabs = [...value.tabs].sort(
+      const sortedTabs = value.tabs.filter(tab => !closingTabsRef.current.has(tab.targetId)).sort(
         (first, second) => (second.lastAccessed ?? 0) - (first.lastAccessed ?? 0),
       )
       setTabs(sortedTabs)
@@ -155,6 +161,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     previewUrlRef.current = undefined
     setPreviewUrl(undefined)
+    setPreviewExpanded(false)
     setIsConfirmingClose(false)
     setPreviewStatus("idle")
     return () => { captureGenerationRef.current += 1 }
@@ -169,8 +176,16 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   }, [])
 
   const runTabAction = async (action: "focus" | "open" | "close") => {
-    if (!selectedTab || busyAction) return
-    setBusyAction(action)
+    if (!selectedTab || busyAction || closingTabsRef.current.has(selectedTab.targetId)) return
+    if (action !== "close") setBusyAction(action)
+    const target = selectedTab
+    if (action === "close") {
+      closingTabsRef.current.add(target.targetId)
+      listGenerationRef.current += 1
+      setTabs(current => current.filter(tab => tab.targetId !== target.targetId))
+      setSelectedTab(undefined)
+      setIsConfirmingClose(false)
+    }
     try {
       if (action === "focus") {
         await request(`/api/tabs/${encodeURIComponent(selectedTab.targetId)}/focus?${sessionQuery.slice(1)}`, { method: "POST" })
@@ -185,40 +200,45 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
         } catch (error) {
           if (getErrorStatus(error) !== 404) throw error
         }
-        listGenerationRef.current += 1
-        setTabs((current) => current.filter((tab) => tab.targetId !== selectedTab.targetId))
         notify("Tab closed.", "success")
-        setSelectedTab(undefined)
-        await loadTabs()
       }
     } catch (error) {
+      if (action === "close") {
+        setTabs(current => [...current.filter(tab => tab.targetId !== target.targetId), target])
+        setSelectedTab(current => current ?? target)
+      }
       const status = getErrorStatus(error)
       if (status === 404) setPreviewStatus("missing")
       else if (status === 409) setPreviewStatus("asleep")
       notify(getErrorMessage(error), "error")
     } finally {
-      setBusyAction(undefined)
+      closingTabsRef.current.delete(target.targetId)
+      if (action !== "close") setBusyAction(undefined)
+      if (action === "close") void loadTabs()
     }
   }
 
   const openNewTab = async () => {
-    if (busyAction) return
-    const url = getWebUrl(newTabUrl)
+    const enteredUrl = newTabUrl
+    const url = getWebUrl(enteredUrl)
     if (!url) {
       notify("Enter a full http:// or https:// URL.", "error")
       return
     }
-    setBusyAction("new")
+    const id = crypto.randomUUID()
+    setOpeningTabs(current => [...current, { id, url }])
+    setNewTabUrl("")
+    setIsOpenFormVisible(false)
     try {
       await request(`/api/tabs?${sessionQuery.slice(1)}`, { method: "POST", body: JSON.stringify({ url }) })
-      setNewTabUrl("")
-      setIsOpenFormVisible(false)
       notify("Tab opened.", "success")
       await loadTabs()
     } catch (error) {
+      setNewTabUrl(current => current || enteredUrl)
+      setIsOpenFormVisible(true)
       notify(getErrorMessage(error), "error")
     } finally {
-      setBusyAction(undefined)
+      setOpeningTabs(current => current.filter(tab => tab.id !== id))
     }
   }
 
@@ -256,8 +276,12 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
             <div {...stylex.props(styles.url)}>{selectedTab.url}</div>
           </div>
 
+          {websiteUrl && <a href={websiteUrl} target="_blank" rel="noopener noreferrer external" {...stylex.props(styles.secondaryButton)}>
+            <ExternalLink size={18} strokeWidth={ICON_STROKE} aria-hidden="true" /> {OPEN_IN_BROWSER_LABEL}
+          </a>}
+
           <div {...stylex.props(styles.previewFrame)}>
-            {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} />}
+            {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <button type="button" aria-label="Expand browser view" aria-haspopup="dialog" {...stylex.props(styles.expandPreview)} onClick={() => setPreviewExpanded(true)}><img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} draggable={false} /></button>}
             {(!previewUrl || isSelectedTabAsleep || isSelectedTabMissing) && <PreviewMessage status={isSelectedTabMissing ? "missing" : isSelectedTabAsleep ? "asleep" : previewStatus} />}
           </div>
 
@@ -313,17 +337,18 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
               <input ref={searchInputRef} {...stylex.props(styles.searchInput)} value={query} placeholder="Search tabs" onChange={(event) => setQuery(event.target.value)} />
             </label>
           </div>
-          <div {...stylex.props(styles.meta)}>{availableTabs.length} tabs</div>
+          <div {...stylex.props(styles.meta)}>{availableTabs.length + openingTabs.length} tabs</div>
           <div {...stylex.props(styles.list)}>
             {listError && <EmptyState title="Reconnecting…" detail={listError} />}
             {!listError && isLoadingTabs && tabs.length === 0 && <EmptyState title="Loading tabs…" detail="Chrome may take a moment to respond." />}
-            {!listError && !isLoadingTabs && filteredTabs.length === 0 && <EmptyState title={availableTabs.length ? "No matching tabs" : "No browser tabs"} detail={availableTabs.length ? "Try a different search." : "Open a tab here or in Aside."} />}
+            {!listError && !isLoadingTabs && filteredTabs.length === 0 && openingTabs.length === 0 && <EmptyState title={availableTabs.length ? "No matching tabs" : "No browser tabs"} detail={availableTabs.length ? "Try a different search." : "Open a tab here or in Aside."} />}
+            {openingTabs.map(tab => <div key={tab.id} role="status" {...stylex.props(styles.tabRow)}><Globe2 size={ICON_SIZE} aria-hidden="true" /><span {...stylex.props(styles.tabCopy)}><span {...stylex.props(styles.rowTitle)}>{new URL(tab.url).hostname}</span><span {...stylex.props(styles.rowMeta)}>Opening…</span></span></div>)}
             {filteredTabs.map((tab) => (
               <button key={tab.targetId} data-browser-tab={tab.targetId} title={tab.title || "Untitled tab"} {...stylex.props(styles.tabRow)} type="button" onClick={() => setSelectedTab(tab)}>
                 <TabThumbnail tab={tab} request={request} sessionQuery={sessionQuery} />
                 <span {...stylex.props(styles.tabCopy)}>
                   <span {...stylex.props(styles.rowTitle)}>{tab.title || "Untitled tab"}</span>
-                  <span {...stylex.props(styles.rowMeta)}>{getHost(tab.url)} · {tab.loaded === false ? "Asleep" : tab.active ? "Active" : "Available"}</span>
+                  <span {...stylex.props(styles.rowMeta)}>{tab.loaded === false ? "Asleep" : tab.active ? "Active" : "Available"}</span>
                 </span>
               </button>
             ))}
@@ -340,7 +365,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
                     onChange={(event) => setNewTabUrl(event.target.value)}
                     autoFocus
                   />
-                  <button {...stylex.props(styles.openButton)} type="submit" disabled={busyAction === "new"}>Open</button>
+                  <button {...stylex.props(styles.openButton)} type="submit">Open</button>
                 </div>
                 <button {...stylex.props(styles.textButton)} type="button" onClick={() => setIsOpenFormVisible(false)}>Cancel</button>
               </form>
@@ -352,6 +377,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
           </div>
         </div>
       )}
+      <AnimatePresence>{isPreviewExpanded && previewUrl && selectedTab && !isSelectedTabAsleep && !isSelectedTabMissing && <ImagePreview kind="browser" key={selectedTab.targetId} src={previewUrl} title={selectedTab.title || "Browser"} url={websiteUrl} onClose={() => setPreviewExpanded(false)} />}</AnimatePresence>
     </section>
   )
 }
@@ -427,11 +453,6 @@ function getErrorMessage(error: unknown) {
   return formatRequestError({ message: error instanceof Error ? error.message : undefined })
 }
 
-function getHost(url: string) {
-  try { return new URL(url).hostname.replace(/^www\./, "") }
-  catch { return url }
-}
-
 function getWebUrl(value: string) {
   try {
     const url = new URL(value.trim())
@@ -457,21 +478,22 @@ const styles = stylex.create({
   thumbnailImage: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
   favicon: { width: 22, height: 22, objectFit: "contain" },
   tabCopy: { minWidth: 0, display: "flex", flexDirection: "column", gap: 4 },
-  rowTitle: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: '0.9375rem', lineHeight: 1.25, fontWeight: 560 },
+  rowTitle: { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflowWrap: "anywhere", fontSize: '0.9375rem', lineHeight: 1.35, fontWeight: 560 },
   rowMeta: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: tokens.muted, fontSize: '0.75rem' },
   detail: { minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain", padding: "16px", display: "flex", flexDirection: "column", gap: 12 },
   tabIdentity: { minWidth: 0, padding: "0 2px" },
-  tabTitle: { margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: '1.0625rem', lineHeight: 1.35, fontWeight: 650 },
-  url: { marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: tokens.muted, fontSize: '0.75rem' },
+  tabTitle: { margin: 0, overflowWrap: "anywhere", fontSize: '1.0625rem', lineHeight: 1.35, fontWeight: 650 },
+  url: { marginTop: 3, overflowWrap: "anywhere", color: tokens.muted, fontSize: '0.75rem', lineHeight: 1.45, userSelect: "text" },
   previewFrame: { minHeight: 180, maxHeight: "min(46vh, 430px)", aspectRatio: "16 / 10", display: "grid", placeItems: "center", overflow: "hidden", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 16, backgroundColor: tokens.surface },
   preview: { display: "block", width: "100%", height: "100%", objectFit: "contain", backgroundColor: tokens.canvas },
+  expandPreview: { width: "100%", height: "100%", minHeight: 0, padding: 0, borderWidth: 0, overflow: "hidden", backgroundColor: "transparent", cursor: "zoom-in" },
   previewMessage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: 24, textAlign: "center", color: tokens.muted, fontSize: '0.8125rem' },
   previewBar: { minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
   status: { minWidth: 0, color: tokens.muted, fontSize: '0.75rem', overflowWrap: "anywhere" },
   textarea: { width: "100%", minHeight: 88, resize: "vertical", padding: "13px 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 14, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem', lineHeight: 1.45 },
-  primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
+  primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: { default: tokens.primary, ":hover": tokens.primaryHover }, color: tokens.primaryForeground, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
   actionGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
-  secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
+  secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600, textDecoration: "none" },
   deleteButton: { minHeight: 44, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 0, backgroundColor: "transparent", color: tokens.danger, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
   confirmRow: { minHeight: 52, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "4px 0" },
   confirmText: { flexBasis: "100%", color: tokens.muted, fontSize: '0.8125rem' },
@@ -483,6 +505,6 @@ const styles = stylex.create({
   openLabel: { display: "block", marginBottom: 8, color: tokens.text, fontSize: '0.875rem', fontWeight: 650 },
   openRow: { display: "flex", gap: 8 },
   openInput: { minWidth: 0, minHeight: 44, flex: 1, padding: "0 12px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 11, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem' },
-  openButton: { minWidth: 70, minHeight: 44, padding: "0 14px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650 },
+  openButton: { minWidth: 70, minHeight: 44, padding: "0 14px", borderWidth: 0, borderRadius: 999, backgroundColor: { default: tokens.primary, ":hover": tokens.primaryHover }, color: tokens.primaryForeground, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 650 },
   srOnly: { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", borderWidth: 0 },
 })

@@ -68,6 +68,7 @@ const styles = stylex.create({
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   heading: { fontSize: '0.875rem', fontWeight: 600, margin: '0 0 12px' },
   statusRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, paddingTop: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border, fontSize: '0.875rem', overflowWrap: 'anywhere' },
+  check: { color: tokens.primary },
   textSize: { minHeight: 44, maxWidth: '100%', borderWidth: 0, padding: '0 8px', borderRadius: 12, backgroundColor: tokens.surface, color: tokens.text },
   actions: { display: 'flex', gap: 8, marginTop: 16 },
   save: { width: '100%', marginTop: 12 },

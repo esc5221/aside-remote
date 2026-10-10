@@ -87,6 +87,7 @@ console.log('activity state and mobile drawer');
 const activity = document.querySelector('details');
 check('activity is rendered collapsed', activity && !activity.open);
 activity.open = true;
+await waitFor(() => activity.querySelector('details'));
 const innerStep = activity.querySelector('details');
 innerStep.open = true;
 socket.emit({ op: 'hello', running: [] });
@@ -117,7 +118,7 @@ typeIn(draft, 'Do not resurrect this run');
 click(document.querySelector('button[aria-label="Send message"]'));
 await waitFor(() => lastSocketRequest('run'));
 const staleRun = lastSocketRequest('run');
-check('draft remains until the server accepts the run', draft.value === 'Do not resurrect this run');
+check('draft clears as soon as the run is sent', draft.value === '');
 click(document.querySelector('button[aria-label="New chat"]'));
 socket.emit({ op: 'run.started', requestId: staleRun.requestId, sessionId: 'STALESESSION01', runId: 'stale-run' });
 await tick(30);
@@ -133,9 +134,10 @@ running.add('NEWSESSION01');
 runRequests.set(recoveredRun.requestId, { status: 'started', sessionId: 'NEWSESSION01', runId: 'recovered-run' });
 socket.disconnect();
 await waitFor(() => location.pathname === '/c/NEWSESSION01');
+await waitFor(() => document.querySelector('[aria-label="Your message"]')?.textContent.includes('Accepted after disconnect'));
 check('request registry recovers a lost run.started event', location.pathname === '/c/NEWSESSION01');
 check('canonical fetch recovers the first message', document.querySelector('[aria-label="Your message"]')?.textContent.includes('Accepted after disconnect'));
-check('draft clears only after recovered acceptance', draft.value === '');
+check('draft stays clear after recovered acceptance', draft.value === '');
 
 click(document.querySelector('button[aria-label="New chat"]'));
 socket.emit({ op: 'run.done', sessionId: 'NEWSESSION01', runId: 'recovered-run' });
@@ -149,7 +151,7 @@ dom.window.close();
 process.exit(failures ? 1 : 0);
 
 function createSession(id, title, mtime) {
-  return { id, title, status: 'idle', unread: false, updatedAt: new Date(mtime * 1_000).toISOString(), mtime, preview: `${title} preview`, lastPrompt: title, bytes: 100, hasLog: true };
+  return { id, title, status: 'idle', unread: false, isPinned: false, updatedAt: new Date(mtime * 1_000).toISOString(), mtime, preview: `${title} preview`, lastPrompt: title, bytes: 100, hasLog: true };
 }
 
 function createMessage(seq, role, blocks) {
@@ -206,6 +208,10 @@ function installFetch(targetWindow) {
       { id: 'wanted-sans', label: 'Wanted Sans', kind: 'sans', webfont: true, stack: '"Wanted Sans Variable", sans-serif' },
       { id: 'system-serif', label: 'System serif', kind: 'serif', webfont: false, stack: 'ui-serif, serif' },
     ] });
+    if (url.pathname === '/api/models') return response({
+      items: [{ id: 'test-model', name: 'Test model', provider: 'test', thinkingLevels: ['high'], supportsFastMode: false }],
+      current: { provider: 'test', modelId: 'test-model', thinkingLevel: 'high', fastMode: false },
+    });
     if (url.pathname === '/api/sessions' && method === 'GET') {
       const query = (url.searchParams.get('q') || '').toLowerCase();
       const items = sessions.filter(item => !query || item.title.toLowerCase().includes(query) || item.preview.toLowerCase().includes(query));
@@ -267,6 +273,7 @@ function installWebSocket(targetWindow) {
 }
 
 function installBrowserGlobals(targetWindow) {
+  const itemHeight = 96;
   const names = ['document', 'navigator', 'location', 'history', 'localStorage', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLDialogElement', 'SVGElement', 'Event', 'ErrorEvent', 'CustomEvent', 'MouseEvent', 'PopStateEvent', 'MutationObserver', 'Image', 'File', 'Blob', 'Headers', 'getComputedStyle'];
   Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: targetWindow });
   names.forEach(name => {
@@ -276,10 +283,34 @@ function installBrowserGlobals(targetWindow) {
   globalThis.cancelAnimationFrame = targetWindow.cancelAnimationFrame.bind(targetWindow);
   globalThis.matchMedia = targetWindow.matchMedia = query => ({ matches: query.includes('pointer: fine'), media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false; } });
   targetWindow.visualViewport = { height: 844, offsetTop: 0, addEventListener() {}, removeEventListener() {} };
-  globalThis.ResizeObserver = targetWindow.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  targetWindow.document.fonts = { load: async () => [], ready: Promise.resolve() };
+  targetWindow.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+    const height = this.hasAttribute('data-item-index') ? itemHeight : 744;
+    return { x: 0, y: 0, top: 0, left: 0, bottom: height, right: 374, width: 374, height, toJSON() {} };
+  };
+  ['offsetHeight', 'clientHeight'].forEach(name => Object.defineProperty(targetWindow.HTMLElement.prototype, name, { configurable: true, get() { return this.getBoundingClientRect().height; } }));
+  Object.defineProperty(targetWindow.HTMLElement.prototype, 'offsetParent', { configurable: true, get() { return this.parentElement; } });
+  Object.defineProperty(targetWindow.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() {
+    const list = this.querySelector('[data-testid="virtuoso-item-list"]');
+    return Math.max(this.clientHeight, list ? (parseFloat(list.style.paddingTop) || 0) + (parseFloat(list.style.paddingBottom) || 0) + list.children.length * itemHeight : this.clientHeight);
+  } });
+  globalThis.ResizeObserver = targetWindow.ResizeObserver = class {
+    targets = new Set();
+    constructor(callback) { this.callback = callback; }
+    observe(target) {
+      this.targets.add(target);
+      queueMicrotask(() => {
+        if (!this.targets.has(target)) return;
+        const contentRect = target.getBoundingClientRect();
+        this.callback([{ target, contentRect, borderBoxSize: [{ blockSize: contentRect.height, inlineSize: contentRect.width }] }]);
+      });
+    }
+    unobserve(target) { this.targets.delete(target); }
+    disconnect() { this.targets.clear(); }
+  };
   globalThis.IntersectionObserver = targetWindow.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
   targetWindow.HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', ''); };
   targetWindow.HTMLDialogElement.prototype.close = function close() { this.removeAttribute('open'); };
-  targetWindow.HTMLElement.prototype.scrollTo = function scrollTo(options) { if (typeof options === 'object' && typeof options.top === 'number') this.scrollTop = options.top; };
+  targetWindow.HTMLElement.prototype.scrollTo = function scrollTo(options) { if (typeof options === 'object' && typeof options.top === 'number') { this.scrollTop = options.top; this.dispatchEvent(new targetWindow.Event('scroll')); } };
   targetWindow.HTMLElement.prototype.focus = function focus() {};
 }

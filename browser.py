@@ -39,6 +39,7 @@ _shot_sem = asyncio.Semaphore(SHOT_CONCURRENCY)
 _shot_waiting = 0
 
 _tabs_cache: tuple[float, str | None, list[dict]] | None = None
+_page_titles: dict[str, tuple[str, str]] = {}
 _tabs_lock = asyncio.Lock()
 _shot_locks: dict[str, asyncio.Lock] = {}
 
@@ -92,7 +93,7 @@ async def list_tabs(force: bool = False, session_id: str | None = None) -> list[
     const c = ct.find(c => c.id === t.id) || ct.find(c => c.url === t.url && c.windowId === t.windowId);
     return {
       targetId: t.targetId,
-      title: t.title,
+      title: c?.title?.trim() || t.title || '',
       url: t.url,
       favicon: t.faviconUrl || null,
       active: !!t.active,
@@ -107,6 +108,16 @@ async def list_tabs(force: bool = False, session_id: str | None = None) -> list[
 """
         tabs = await mcp.repl_json(code, title="Listing browser tabs", timeout=45)
         tabs = tabs if isinstance(tabs, list) else []
+        current_targets = {tab["targetId"] for tab in tabs}
+        for target in list(_page_titles):
+            if target not in current_targets:
+                del _page_titles[target]
+        for tab in tabs:
+            title = tab["title"].strip()
+            if not title or _title_key(title) == _title_key(tab["url"]):
+                cached_url, cached_title = _page_titles.get(tab["targetId"], ("", ""))
+                title = cached_title if cached_url == tab["url"] else ""
+            tab["title"] = title
         if session_id:
             targets, active_target = await asyncio.to_thread(daemondb.browser_targets, session_id)
             tabs = [tab for tab in tabs if tab.get("targetId") in targets]
@@ -114,6 +125,10 @@ async def list_tabs(force: bool = False, session_id: str | None = None) -> list[
                 tab["active"] = tab["targetId"] == active_target
         _tabs_cache = (now, session_id, tabs)
         return tabs
+
+
+def _title_key(value: str) -> str:
+    return value.removeprefix("https://").removeprefix("http://").removeprefix("www.").rstrip("/")
 
 
 async def find_tab(target_id: str, *, force: bool = False, session_id: str | None = None) -> dict:
@@ -174,12 +189,17 @@ async def _capture(target_id: str, dest: Path, full: bool, quality: int, session
   const dir = pwd + '/artifacts';
   await fs.mkdir(dir, {{ recursive: true }});
   const pg = await __attach({_jsq(target_id)});
+  let title = ''; let heading = '';
+  try {{ ({{ title, heading }} = await pg.evaluate(() => ({{ title: document.title.trim(), heading: document.querySelector('h1')?.innerText.trim() || '' }}))); }} catch (e) {{}}
   const buf = await pg.screenshot({{ type: 'jpeg', quality: {int(quality)}, fullPage: {str(bool(full)).lower()} }});
   const fp = dir + '/shot-' + Date.now() + '.jpg';
   await fs.writeFile(fp, buf);
-  console.log(JSON.stringify({{ path: fp, bytes: buf.length, url: pg.url() }}));
+  console.log(JSON.stringify({{ path: fp, bytes: buf.length, url: pg.url(), title, heading }}));
 """
     info = await mcp.repl_json(code, title="Capturing tab", timeout=40)
+    if not info["title"] or _title_key(info["title"]) == _title_key(info["url"]):
+        info["title"] = info["heading"]
+    _page_titles[target_id] = (info["url"], info["title"])
     src = Path(info["path"])
     dest.write_bytes(src.read_bytes())
     try:
@@ -190,7 +210,7 @@ async def _capture(target_id: str, dest: Path, full: bool, quality: int, session
         "cached": False,
         "bytes": info.get("bytes"),
         "url": info.get("url"),
-        "title": tab.get("title"),
+        "title": info["title"] or tab.get("title"),
     }
 
 

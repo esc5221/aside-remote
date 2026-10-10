@@ -1,5 +1,14 @@
 import type { BrowserTab } from "./types"
 
+export const OPEN_IN_BROWSER_LABEL = "Open in your browser"
+
+export function getWebsiteUrl(value: string) {
+  try {
+    const url = new URL(value)
+    if (url.protocol === "https:" || url.protocol === "http:") return url.href
+  } catch { }
+}
+
 export function isTabResponse(value: unknown): value is { tabs: BrowserTab[] } {
   if (typeof value !== "object" || value === null) return false
   const tabs = Reflect.get(value, "tabs")

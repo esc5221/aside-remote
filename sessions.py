@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 import httpx
 
 import config
+import conversation_pins
 
 log = logging.getLogger("aside-remote.sessions")
 
@@ -541,14 +542,14 @@ def _hydrate(mtime: int, sid: str, size: int, d: Path | None) -> tuple[str, str]
     return title, preview
 
 
-def _cursor_enc(mtime: int, sid: str) -> str:
-    return f"{mtime}~{sid}"
+def _cursor_enc(rank: int, mtime: int, sid: str) -> str:
+    return f"{rank}~{mtime}~{sid}"
 
 
-def _cursor_dec(c: str) -> tuple[int, str] | None:
+def _cursor_dec(c: str) -> tuple[int, int, str] | None:
     try:
-        a, b = c.split("~", 1)
-        return (int(a), b)
+        rank, mtime, sid = c.split("~", 2)
+        return (int(rank), int(mtime), sid)
     except Exception:
         return None
 
@@ -571,6 +572,10 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
     """키셋 페이지네이션. offset 이 아니라 (mtime, id) 로 잘라서,
     페이지를 넘기는 사이에 새 세션이 위에 끼어들어도 항목이 밀리거나 중복되지 않는다."""
     rows = _get_index()
+    pins = await asyncio.to_thread(conversation_pins.pinned_ids)
+
+    def sort_key(row):
+        return (0 if row[1] in pins else 1, -row[0], row[1])
 
     live: dict[str, dict] = {}
     try:
@@ -586,6 +591,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
               for sid, s in live.items() if sid not in known and not s.get("ephemeral")]
     if ghosts:
         rows = sorted(rows + ghosts, key=lambda r: (-r[0], r[1]))
+    rows = sorted(rows, key=sort_key)
 
     total = len(rows)
 
@@ -594,18 +600,19 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
         keep = []
         for r in rows:
             t, p = _hydrate(*r)
-            if needle in t.lower() or needle in p.lower() or needle in r[1].lower():
+            title = live.get(r[1], {}).get("title") or t
+            if needle in title.lower() or needle in p.lower() or needle in r[1].lower():
                 keep.append(r)
         rows = keep
     matched = len(rows)
 
     cur = _cursor_dec(cursor) if cursor else None
     if cur:
-        ck = (-cur[0], cur[1])
-        rows = [r for r in rows if (-r[0], r[1]) > ck]
+        ck = (cur[0], -cur[1], cur[2])
+        rows = [r for r in rows if sort_key(r) > ck]
 
     page = rows[:limit]
-    nxt = _cursor_enc(page[-1][0], page[-1][1]) if len(rows) > limit and page else None
+    nxt = _cursor_enc(sort_key(page[-1])[0], page[-1][0], page[-1][1]) if len(rows) > limit and page else None
 
     items = []
     for mtime, sid, size, d in page:
@@ -618,6 +625,7 @@ async def list_sessions(client: httpx.AsyncClient, *, limit: int = 30,
             "title": (s.get("title") or title or "Untitled conversation")[:120],
             "status": s.get("status") or "idle",
             "unread": bool(s.get("unread")),
+            "isPinned": sid in pins,
             "updatedAt": _iso(mtime),
             "mtime": mtime / 1e9,
             "preview": (_final_text(run)[:280] if run else "") or preview,

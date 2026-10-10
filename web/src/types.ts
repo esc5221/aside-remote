@@ -73,6 +73,7 @@ export type ChatSession = {
   title: string
   status: string
   unread: boolean
+  isPinned: boolean
   updatedAt: string
   mtime: number
   preview: string
@@ -90,6 +91,9 @@ export type UploadAttachment = {
   bytes: number
   url: string
 }
+
+export type ModelConfig = { provider: string; modelId: string; thinkingLevel: string; fastMode: boolean }
+export type AvailableModel = { id: string; name: string; provider: string; thinkingLevels: string[]; supportsFastMode: boolean }
 
 export type QueuedMessage = {
   id: string
@@ -112,6 +116,7 @@ export type UseChat = {
   isConnected: boolean
   isOpening: boolean
   isSending: boolean
+  isStopping: boolean
   isUpdatingQueue: boolean
   isQueuePaused: boolean
   queuedMessages: QueuedMessage[]
@@ -139,7 +144,7 @@ export type UseChat = {
   loadMore: () => Promise<void>
   openSession: (sessionId: string) => Promise<boolean>
   newChat: () => void
-  send: (prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
+  send: (prompt: string, attachments?: UploadAttachment[], model?: ModelConfig) => Promise<boolean>
   queue: (prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
   editQueuedMessage: (id: string, prompt: string, attachments?: UploadAttachment[]) => Promise<boolean>
   beginEditQueuedMessage: (id: string) => Promise<boolean>
@@ -149,6 +154,7 @@ export type UseChat = {
   resumeQueue: () => Promise<boolean>
   upload: (file: File) => Promise<UploadAttachment>
   deleteSession: (sessionId: string) => Promise<boolean>
+  updateSession: (sessionId: string, settings: { title?: string; isPinned?: boolean }) => Promise<boolean>
   abort: () => Promise<boolean>
   clearRecoveredDraft: () => void
   dismissToast: (toastId: string) => void
