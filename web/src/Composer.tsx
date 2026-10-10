@@ -25,6 +25,8 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
   const isExpanded = isKeyboardOpen || hasFocus && matchMedia('(pointer: fine)').matches;
   const attachmentRef = useRef<Attachment[]>([]);
   const draftRef = useRef(draft);
+  // A touch submits before iOS can blur the input; its later click must not send again or activate the replacement Stop button.
+  const isTouchSubmissionRef = useRef(false);
   const pendingPreviewRevokesRef = useRef<string[]>([]);
   const revisionRef = useRef(revision);
   useEffect(() => { draftRef.current = draft; }, [draft]);
@@ -127,8 +129,8 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
       <IconButton label="Add photos" style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
       <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input, isExpanded && styles.expandedInput)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
       <div {...stylex.props(styles.submitActions)}>{chat.isRunning && !hasInput
-        ? <motion.button key="stop" type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onPointerDown={event => { if (event.pointerType === 'touch') event.preventDefault(); }} onClick={() => { void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>
-        : <motion.button key="send" type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)} onPointerDown={event => { if (event.pointerType === 'touch') event.preventDefault(); }}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
+        ? <motion.button key="stop" type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onPointerDown={event => { isTouchSubmissionRef.current = false; if (event.pointerType === 'touch') event.preventDefault(); }} onClick={event => { if (event.detail === 0 || !isTouchSubmissionRef.current) void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>
+        : <motion.button key="send" type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)} onPointerDown={event => { isTouchSubmissionRef.current = event.pointerType === 'touch'; if (isTouchSubmissionRef.current) { event.preventDefault(); void submit(); } }} onClick={event => { if (isTouchSubmissionRef.current && event.detail > 0) event.preventDefault(); }}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={event => { void addFiles([...event.target.files || []]); event.target.value = ''; }} />
     </form>
   </footer>;
