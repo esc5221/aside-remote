@@ -1,22 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { ArrowUp, Plus, Square, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { tokens } from './tokens.stylex';
-import { ICON_STROKE, BrowserIcon, IconButton } from './ui';
+import { ICON_STROKE, BrowserIcon, IconButton, styles as ui } from './ui';
 import type { UploadAttachment, UseChat } from './types';
+import { ModelPicker, useModelSelection } from './ModelPicker';
 
 type Attachment = { key: string; preview: string; name: string; upload?: UploadAttachment; hasError?: boolean };
 const MAX_ATTACHMENTS = 6;
+const COMPACT_DRAFT_HEIGHT = 28;
 const MAX_DRAFT_HEIGHT = 160;
 
-export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, textSize }: {
-  chat: UseChat; onBrowser: () => void; draft: string; setDraft: (value: string) => void; revision: number; notify: (text: string, kind?: 'error' | 'success') => void; textSize: number;
+export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, textSize, isKeyboardOpen }: {
+  chat: UseChat; onBrowser: () => void; draft: string; setDraft: (value: string) => void; revision: number; notify: (text: string, kind?: 'error' | 'success') => void; textSize: number; isKeyboardOpen: boolean;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  const modelSelection = useModelSelection(chat, notify);
   const shouldReduceMotion = useReducedMotion();
   const fileInput = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [hasFocus, setFocus] = useState(false);
+  const isExpanded = isKeyboardOpen || hasFocus && matchMedia('(pointer: fine)').matches;
   const attachmentRef = useRef<Attachment[]>([]);
   const draftRef = useRef(draft);
   const pendingPreviewRevokesRef = useRef<string[]>([]);
@@ -35,17 +41,26 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     if (!document.querySelector('dialog[open]')) input.current?.focus({ preventScroll: true });
   }, [revision]);
   useEffect(() => () => [...attachmentRef.current.map(attachment => attachment.preview), ...pendingPreviewRevokesRef.current].forEach(preview => URL.revokeObjectURL(preview)), []);
-  function resizeInput() { if (input.current) { input.current.style.height = 'auto'; input.current.style.height = Math.min(input.current.scrollHeight, MAX_DRAFT_HEIGHT) + 'px'; } }
-  useEffect(resizeInput, [draft, textSize]);
+  function resizeInput() { if (input.current) { input.current.style.height = 'auto'; input.current.style.height = (isExpanded ? Math.min(input.current.scrollHeight, MAX_DRAFT_HEIGHT) : COMPACT_DRAFT_HEIGHT) + 'px'; } }
+  useEffect(resizeInput, [draft, textSize, isExpanded]);
+  useLayoutEffect(() => {
+    const footer = footerRef.current;
+    if (!footer) return;
+    const updateHeight = () => footer.parentElement?.style.setProperty('--composer-height', footer.getBoundingClientRect().height + 'px');
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const area = input.current; if (!area) return;
     let width = area.clientWidth;
     const observer = new ResizeObserver(() => { if (area.clientWidth !== width) { width = area.clientWidth; resizeInput(); } });
     observer.observe(area); return () => observer.disconnect();
-  }, []);
+  }, [isExpanded]);
   const hasUploadPending = attachments.some(attachment => !attachment.upload && !attachment.hasError);
   const hasDraftContent = draft.trim().length > 0 || attachments.some(attachment => attachment.upload);
-  const canSubmit = chat.isReady && !chat.authError && !chat.isOpening && !chat.isSending && !chat.isUpdatingQueue && !hasUploadPending && hasDraftContent;
+  const canSubmit = chat.isReady && !chat.authError && !chat.isOpening && !chat.isSending && !chat.isUpdatingQueue && !modelSelection.isUpdating && (!!chat.sessionId || !!modelSelection.current) && !hasUploadPending && hasDraftContent;
   const shouldQueue = chat.isRunning || chat.queuedMessages.length > 0;
   function flushPreviewRevokes() { pendingPreviewRevokesRef.current.splice(0).forEach(preview => URL.revokeObjectURL(preview)); }
 
@@ -77,7 +92,7 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     const sentDraft = draft; const sentRevision = revisionRef.current;
     const sentAttachments = attachmentRef.current;
     const uploads = sentAttachments.flatMap(attachment => attachment.upload ? [attachment.upload] : []);
-    const accepted = shouldQueue ? await chat.queue(sentDraft, uploads) : await chat.send(sentDraft, uploads);
+    const accepted = shouldQueue ? await chat.queue(sentDraft, uploads) : await chat.send(sentDraft, uploads, modelSelection.current);
     if (!accepted || sentRevision !== revisionRef.current) return;
     if (draftRef.current === sentDraft) { draftRef.current = ''; setDraft(''); }
     const sentKeys = new Set(sentAttachments.map(attachment => attachment.key));
@@ -86,8 +101,12 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
     setAttachments(attachmentRef.current);
   }
 
-  return <footer id="composer" {...stylex.props(styles.footer)}>
-    <motion.form layout {...stylex.props(styles.composer)} onSubmit={event => { event.preventDefault(); void submit(); }} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void addFiles([...event.dataTransfer.files]); }}>
+  return <footer ref={footerRef} id="composer" {...stylex.props(styles.footer, isExpanded && styles.expandedFooter)} onFocusCapture={() => setFocus(true)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocus(false); }}>
+    <div {...stylex.props(styles.tools)}>
+      <motion.button type="button" aria-haspopup="dialog" aria-label="Open browser" {...stylex.props(styles.browser, ui.glass)} whileTap={shouldReduceMotion ? undefined : { scale: .96 }} onPointerDown={event => { if (event.pointerType === 'touch') { event.preventDefault(); onBrowser(); } }} onClick={onBrowser}><BrowserIcon size={17} /><span>Browser</span></motion.button>
+      <ModelPicker selection={modelSelection} disabled={!chat.isReady || chat.isOpening || chat.isSending || !!chat.authError} isRunning={chat.isRunning} />
+    </div>
+    <motion.form layout {...stylex.props(styles.composer, ui.glass, isExpanded && styles.expandedComposer)} onSubmit={event => { event.preventDefault(); void submit(); }} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void addFiles([...event.dataTransfer.files]); }}>
       <AnimatePresence initial={false} onExitComplete={flushPreviewRevokes}>
         {attachments.length > 0 && <motion.div key="attachments" {...stylex.props(styles.attachments)} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 82 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: .18 }}>
           <AnimatePresence initial={false} onExitComplete={flushPreviewRevokes}>{attachments.map(attachment => <motion.div layout key={attachment.key} {...stylex.props(styles.attachment)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .84, y: -6 }} transition={{ duration: .18, ease: [0.22, 1, 0.36, 1] }}>
@@ -97,12 +116,10 @@ export function Composer({ chat, onBrowser, draft, setDraft, revision, notify, t
           </motion.div>)}</AnimatePresence>
         </motion.div>}
       </AnimatePresence>
-      <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
-      <div {...stylex.props(styles.actions)}><div {...stylex.props(styles.leftActions)}><IconButton isOutlined label="Add photos" disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
-        <motion.button type="button" aria-haspopup="dialog" aria-label="Open browser" {...stylex.props(styles.browser)} whileTap={shouldReduceMotion ? undefined : { scale: .96 }} onClick={onBrowser}><BrowserIcon size={17} /><span {...stylex.props(styles.browserLabel)}>Browser</span></motion.button></div>
-        <div {...stylex.props(styles.submitActions)}>{chat.isRunning && <motion.button type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onClick={() => { void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>}
-          {(!chat.isRunning || hasDraftContent) && <motion.button type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
-      </div>
+      <IconButton label="Add photos" style={{ width: 36, height: 36 }} disabled={!chat.isReady || chat.isOpening || !!chat.authError} onClick={() => fileInput.current?.click()}><Plus size={24} strokeWidth={ICON_STROKE} /></IconButton>
+      <textarea ref={input} id="draft" aria-label="Message" placeholder={chat.authError ? 'Connect in Settings' : chat.isRunning ? 'Follow up' : 'Message'} rows={1} value={draft} disabled={!chat.isReady || chat.isOpening || !!chat.authError} {...stylex.props(styles.input, isExpanded && styles.expandedInput)} onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); void addFiles(files); } }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && matchMedia('(pointer: fine)').matches) { event.preventDefault(); void submit(); } }} />
+      <div {...stylex.props(styles.submitActions)}>{chat.isRunning && <motion.button type="button" aria-label="Stop response" title="Stop response" whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.stop)} onClick={() => { void chat.abort(); }}><Square size={13} fill="currentColor" /></motion.button>}
+        {(!chat.isRunning || hasDraftContent) && <motion.button type="submit" id="send" aria-label={shouldQueue ? 'Queue message' : chat.isSending ? 'Starting response' : 'Send message'} title={shouldQueue ? 'Queue message' : 'Send message'} disabled={!canSubmit} whileTap={shouldReduceMotion ? undefined : { scale: .88 }} {...stylex.props(styles.send)}><ArrowUp size={22} strokeWidth={2.2} /></motion.button>}</div>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={event => { void addFiles([...event.target.files || []]); event.target.value = ''; }} />
     </motion.form>
   </footer>;
@@ -123,17 +140,18 @@ async function resizeImage(file: File) {
 }
 
 const styles = stylex.create({
-  footer: { flexShrink: 0, width: '100%', backgroundColor: tokens.canvas, padding: '4px 20px max(16px, env(safe-area-inset-bottom))', '@media (max-width: 700px)': { paddingLeft: 'max(12px, env(safe-area-inset-left))', paddingRight: 'max(12px, env(safe-area-inset-right))' } },
-  composer: { width: '100%', maxWidth: 768, margin: '0 auto', borderRadius: 28, backgroundColor: tokens.surface, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, padding: '14px 8px 7px', minWidth: 0 },
-  input: { display: 'block', width: '100%', resize: 'none', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '1rem', lineHeight: 1.5, minHeight: 28, maxHeight: MAX_DRAFT_HEIGHT, overflowY: 'auto', overflowWrap: 'anywhere', padding: '0 10px 4px', '::placeholder': { color: tokens.muted } },
-  actions: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
-  leftActions: { display: 'flex', alignItems: 'center', gap: 4 },
-  browser: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 38, padding: '0 12px', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, borderRadius: 24, backgroundColor: { default: tokens.canvas, ':hover': tokens.hover }, color: tokens.text, fontSize: '0.8125rem', fontWeight: 500, '@media (max-width: 380px)': { width: 38, padding: 0 } },
-  browserLabel: { '@media (max-width: 380px)': { display: 'none' } },
-  submitActions: { display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 },
-  stop: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.controlBorder, backgroundColor: tokens.canvas, color: tokens.text, flexShrink: 0 },
-  send: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 0, backgroundColor: tokens.text, color: tokens.canvas, marginRight: 4, flexShrink: 0 },
-  attachments: { display: 'flex', gap: 10, overflowX: 'auto', padding: '0 10px 10px', maxWidth: '100%', minWidth: 0 },
+  footer: { position: 'absolute', bottom: 0, left: 0, width: '100%', zIndex: 3, pointerEvents: 'none', padding: '6px max(32px, env(safe-area-inset-right)) var(--composer-bottom-padding, max(18px, env(safe-area-inset-bottom))) max(32px, env(safe-area-inset-left))', '@media (max-width: 375px)': { paddingLeft: 20, paddingRight: 20 } },
+  expandedFooter: { paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))' },
+  tools: { display: 'var(--composer-tools-display, none)', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10, minWidth: 0 },
+  composer: { display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'center', width: '100%', maxWidth: 736, margin: '0 auto', borderRadius: 30, padding: '2px 4px', minWidth: 0, pointerEvents: 'auto' },
+  expandedComposer: { borderRadius: 28, padding: 8 },
+  input: { display: 'block', width: '100%', resize: 'none', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '1rem', lineHeight: 1.5, minHeight: COMPACT_DRAFT_HEIGHT, maxHeight: MAX_DRAFT_HEIGHT, overflowY: 'hidden', overflowWrap: 'anywhere', padding: '2px 4px', '::placeholder': { color: tokens.muted } },
+  expandedInput: { order: -1, gridColumn: '1 / -1', minHeight: 44, overflowY: 'auto', padding: '8px 10px 12px' },
+  browser: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 32, padding: '0 10px', borderRadius: 24, color: tokens.text, fontSize: '.6875rem', fontWeight: 500, pointerEvents: 'auto' },
+  submitActions: { display: 'flex', gridColumn: 3, alignItems: 'center', gap: 4, minWidth: 0 },
+  stop: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.accent, backgroundColor: tokens.accent, color: tokens.mediaWhite, flexShrink: 0 },
+  send: { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 0, backgroundColor: tokens.accent, color: tokens.mediaWhite, flexShrink: 0 },
+  attachments: { order: -2, gridColumn: '1 / -1', display: 'flex', gap: 10, overflowX: 'auto', padding: '0 10px 10px', maxWidth: '100%', minWidth: 0 },
   attachment: { position: 'relative', width: 72, height: 72, flexShrink: 0 },
   thumbnail: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 },
   remove: { position: 'absolute', right: -4, top: -4, width: 28, height: 28, borderRadius: '50%', color: tokens.canvas, backgroundColor: tokens.text, borderWidth: 2, borderStyle: 'solid', borderColor: tokens.surface, display: 'flex', alignItems: 'center', justifyContent: 'center' },

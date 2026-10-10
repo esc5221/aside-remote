@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession, MessageBlock, UploadAttachment } from './types';
+import type { AvailableModel, ChatMessage, ChatSession, MessageBlock, ModelConfig, UploadAttachment } from './types';
 
 const INVALID_RESPONSE = 'Invalid server response.';
 const MESSAGE_ROLES: ChatMessage['role'][] = ['user', 'assistant', 'toolResult', 'system'];
@@ -44,6 +44,22 @@ function optionalText(value: unknown) {
 
 function optionalNumber(value: unknown) {
   return value == null ? undefined : number(value);
+}
+
+export function parseModelConfig(value: unknown): ModelConfig {
+  const item = record(value);
+  return { provider: text(item.provider), modelId: text(item.modelId), thinkingLevel: text(item.thinkingLevel), fastMode: boolean(item.fastMode) };
+}
+
+export function parseModels(value: unknown) {
+  const item = record(value);
+  const items = array(item.items).map((value): AvailableModel => {
+    const model = record(value);
+    const thinkingLevels = array(model.thinkingLevels).map(text);
+    if (!thinkingLevels.length) throw new Error(INVALID_RESPONSE);
+    return { id: text(model.id), name: text(model.name), provider: text(model.provider), thinkingLevels, supportsFastMode: boolean(model.supportsFastMode) };
+  });
+  return { items, current: parseModelConfig(item.current) };
 }
 
 function block(value: unknown): MessageBlock {
@@ -107,6 +123,7 @@ function session(value: unknown): ChatSession {
     title: text(item.title),
     status: text(item.status),
     unread: boolean(item.unread),
+    isPinned: boolean(item.isPinned),
     updatedAt: text(item.updatedAt),
     mtime: number(item.mtime),
     preview: text(item.preview),
@@ -116,6 +133,11 @@ function session(value: unknown): ChatSession {
     cost: optionalNumber(item.cost),
     tokens: optionalNumber(item.tokens),
   };
+}
+
+export function parseSessionDetails(value: unknown) {
+  const item = record(value);
+  return { id: text(item.id), title: text(item.title), status: text(item.status), isPinned: boolean(item.isPinned) };
 }
 
 export function parseSessionsResponse(value: unknown) {

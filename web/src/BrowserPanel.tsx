@@ -16,7 +16,7 @@ import { tokens } from "./tokens.stylex"
 import { focusDialogSurface } from "./ui"
 import { useAutoRefresh } from "./useAutoRefresh"
 import type { BrowserTab } from "./types"
-import { isTabResponse } from "./browser"
+import { getWebsiteUrl, isTabResponse, OPEN_IN_BROWSER_LABEL } from "./browser"
 
 const TAB_REFRESH_INTERVAL_MS = 2_000
 const PREVIEW_REFRESH_INTERVAL_MS = 1_000
@@ -61,6 +61,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
   const wasClosingRef = useRef(false)
   const selectedTargetRef = useRef<string | undefined>(undefined)
   const selectedTabId = selectedTab?.targetId
+  const websiteUrl = selectedTab && getWebsiteUrl(selectedTab.url)
   const isClosingTab = busyAction === "close"
   const isSelectedTabAsleep = selectedTab?.loaded === false
   const isSelectedTabMissing = !!selectedTabId && !tabs.some((tab) => tab.targetId === selectedTabId)
@@ -256,6 +257,10 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
             <div {...stylex.props(styles.url)}>{selectedTab.url}</div>
           </div>
 
+          {websiteUrl && <a href={websiteUrl} target="_blank" rel="noopener noreferrer external" {...stylex.props(styles.secondaryButton)}>
+            <ExternalLink size={18} strokeWidth={ICON_STROKE} aria-hidden="true" /> {OPEN_IN_BROWSER_LABEL}
+          </a>}
+
           <div {...stylex.props(styles.previewFrame)}>
             {previewUrl && !isSelectedTabAsleep && !isSelectedTabMissing && <img {...stylex.props(styles.preview)} src={previewUrl} alt={`Current view of ${selectedTab.title || "browser tab"}`} />}
             {(!previewUrl || isSelectedTabAsleep || isSelectedTabMissing) && <PreviewMessage status={isSelectedTabMissing ? "missing" : isSelectedTabAsleep ? "asleep" : previewStatus} />}
@@ -323,7 +328,7 @@ export function BrowserPanel({ request, notify, onStart, onClose, sessionId, ini
                 <TabThumbnail tab={tab} request={request} sessionQuery={sessionQuery} />
                 <span {...stylex.props(styles.tabCopy)}>
                   <span {...stylex.props(styles.rowTitle)}>{tab.title || "Untitled tab"}</span>
-                  <span {...stylex.props(styles.rowMeta)}>{getHost(tab.url)} · {tab.loaded === false ? "Asleep" : tab.active ? "Active" : "Available"}</span>
+                  <span {...stylex.props(styles.rowMeta)}>{tab.loaded === false ? "Asleep" : tab.active ? "Active" : "Available"}</span>
                 </span>
               </button>
             ))}
@@ -427,11 +432,6 @@ function getErrorMessage(error: unknown) {
   return formatRequestError({ message: error instanceof Error ? error.message : undefined })
 }
 
-function getHost(url: string) {
-  try { return new URL(url).hostname.replace(/^www\./, "") }
-  catch { return url }
-}
-
 function getWebUrl(value: string) {
   try {
     const url = new URL(value.trim())
@@ -457,12 +457,12 @@ const styles = stylex.create({
   thumbnailImage: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
   favicon: { width: 22, height: 22, objectFit: "contain" },
   tabCopy: { minWidth: 0, display: "flex", flexDirection: "column", gap: 4 },
-  rowTitle: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: '0.9375rem', lineHeight: 1.25, fontWeight: 560 },
+  rowTitle: { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflowWrap: "anywhere", fontSize: '0.9375rem', lineHeight: 1.35, fontWeight: 560 },
   rowMeta: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: tokens.muted, fontSize: '0.75rem' },
   detail: { minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain", padding: "16px", display: "flex", flexDirection: "column", gap: 12 },
   tabIdentity: { minWidth: 0, padding: "0 2px" },
-  tabTitle: { margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: '1.0625rem', lineHeight: 1.35, fontWeight: 650 },
-  url: { marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: tokens.muted, fontSize: '0.75rem' },
+  tabTitle: { margin: 0, overflowWrap: "anywhere", fontSize: '1.0625rem', lineHeight: 1.35, fontWeight: 650 },
+  url: { marginTop: 3, overflowWrap: "anywhere", color: tokens.muted, fontSize: '0.75rem', lineHeight: 1.45, userSelect: "text" },
   previewFrame: { minHeight: 180, maxHeight: "min(46vh, 430px)", aspectRatio: "16 / 10", display: "grid", placeItems: "center", overflow: "hidden", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 16, backgroundColor: tokens.surface },
   preview: { display: "block", width: "100%", height: "100%", objectFit: "contain", backgroundColor: tokens.canvas },
   previewMessage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: 24, textAlign: "center", color: tokens.muted, fontSize: '0.8125rem' },
@@ -471,7 +471,7 @@ const styles = stylex.create({
   textarea: { width: "100%", minHeight: 88, resize: "vertical", padding: "13px 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 14, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '1rem', lineHeight: 1.45 },
   primaryButton: { minHeight: 48, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 18px", borderWidth: 0, borderRadius: 999, backgroundColor: tokens.text, color: tokens.canvas, fontFamily: tokens.font, fontSize: '0.9375rem', fontWeight: 650 },
   actionGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
-  secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
+  secondaryButton: { minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 1, borderStyle: "solid", borderColor: tokens.border, borderRadius: 999, backgroundColor: tokens.canvas, color: tokens.text, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600, textDecoration: "none" },
   deleteButton: { minHeight: 44, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "0 14px", borderWidth: 0, backgroundColor: "transparent", color: tokens.danger, fontFamily: tokens.font, fontSize: '0.875rem', fontWeight: 600 },
   confirmRow: { minHeight: 52, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "4px 0" },
   confirmText: { flexBasis: "100%", color: tokens.muted, fontSize: '0.8125rem' },

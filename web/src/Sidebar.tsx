@@ -1,30 +1,66 @@
+import { useEffect, useRef } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import { Plus, Search, Settings2, Trash2, X, ChevronRight } from 'lucide-react';
-import type { UseChat, ChatSession } from './types';
+import { Virtuoso } from 'react-virtuoso';
+import { Ellipsis, Pin, Plus, Search, Settings2, X, ChevronRight } from 'lucide-react';
+import type { UseChat } from './types';
+import type { SessionMenuTarget } from './SessionMenu';
 import { tokens } from './tokens.stylex';
 import { ICON_STROKE, BrowserIcon, IconButton, styles as ui } from './ui';
 
-export function Sidebar({ chat, isDrawer, onClose, onNew, onOpen, onSettings, onBrowser, onDelete }: {
-  chat: UseChat; isDrawer?: boolean; onClose?: () => void; onNew: () => void; onOpen: (id: string) => void; onSettings: () => void; onBrowser: () => void; onDelete: (session: ChatSession) => void;
+export function Sidebar({ chat, isDrawer, onClose, onNew, onOpen, onSettings, onBrowser, onMenu }: {
+  chat: UseChat; isDrawer?: boolean; onClose?: () => void; onNew: () => void; onOpen: (id: string) => void; onSettings: () => void; onBrowser: () => void; onMenu: (target: SessionMenuTarget) => void;
 }) {
+  const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | undefined>(undefined);
+  const hasLongPressed = useRef(false);
+  useEffect(() => cancelPress, []);
+  function cancelPress() { if (press.current) clearTimeout(press.current.timer); press.current = undefined; }
+  function targetFor(element: EventTarget) {
+    if (!(element instanceof Element)) return;
+    const anchor = element.closest<HTMLElement>('button[data-session-id]');
+    const session = chat.sessions.find(session => session.id === anchor?.dataset.sessionId);
+    return anchor && session ? { id: session.id, title: session.title, anchor } : undefined;
+  }
   let lastGroup = '';
-  return <aside {...stylex.props(styles.sidebar)} aria-label="Conversations">
+  const rows = chat.sessions.flatMap(session => {
+    const group = session.isPinned ? 'Pinned' : dateGroup(session.mtime); const hasHeading = group !== lastGroup; lastGroup = group;
+    return [...(hasHeading ? [{ kind: 'heading' as const, group }] : []), { kind: 'session' as const, session }];
+  });
+  return <aside {...stylex.props(styles.sidebar)} aria-label="Conversations" onPointerDown={event => {
+    cancelPress(); hasLongPressed.current = false;
+    if (event.button !== 0 || !event.isPrimary) return;
+    const target = targetFor(event.target); if (!target) return;
+    const { clientX: x, clientY: y } = event;
+    press.current = { x, y, timer: setTimeout(() => { hasLongPressed.current = true; window.getSelection()?.removeAllRanges(); onMenu({ ...target, point: { x, y } }); cancelPress(); }, 500) };
+  }} onPointerMove={event => { if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 8) cancelPress(); }} onPointerUp={cancelPress} onPointerCancel={cancelPress} onPointerLeave={cancelPress} onClickCapture={event => { if (hasLongPressed.current) { event.preventDefault(); event.stopPropagation(); hasLongPressed.current = false; } }} onContextMenu={event => {
+    const target = targetFor(event.target); if (!target) return;
+    event.preventDefault(); cancelPress(); hasLongPressed.current = true; onMenu({ ...target, point: { x: event.clientX, y: event.clientY } });
+  }} onKeyDown={event => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    const target = targetFor(event.target); if (!target) return;
+    event.preventDefault(); onMenu(target);
+  }}>
     <div {...stylex.props(styles.top)}><span {...stylex.props(styles.brand)}>Aside</span>{isDrawer && <IconButton label="Close conversations" onClick={onClose}><X size={22} strokeWidth={ICON_STROKE} /></IconButton>}</div>
     <button {...stylex.props(styles.newChat)} onClick={onNew}><Plus size={20} strokeWidth={ICON_STROKE} />New chat</button>
     <div {...stylex.props(styles.search)}><Search size={17} strokeWidth={ICON_STROKE} /><input aria-label="Search conversations" placeholder="Search" value={chat.searchQuery} onChange={event => chat.setSearchQuery(event.target.value)} {...stylex.props(styles.searchInput)} />{chat.searchQuery && <button {...stylex.props(styles.clear)} aria-label="Clear search" onClick={() => chat.setSearchQuery('')}><X size={16} /></button>}</div>
     <div {...stylex.props(styles.list)}>
-      {chat.sessions.map(session => { const group = dateGroup(session.mtime); const heading = group !== lastGroup; lastGroup = group;
-        return <div key={session.id}>{heading && <h2 {...stylex.props(styles.group)}>{group}</h2>}<div {...stylex.props(styles.session, session.id === chat.sessionId && styles.selected)}>
-          <button {...stylex.props(styles.sessionButton)} title={session.title || 'Untitled conversation'} aria-current={session.id === chat.sessionId ? 'page' : undefined} onClick={() => onOpen(session.id)}><span {...stylex.props(styles.sessionTitle)}>{session.title || 'Untitled conversation'}</span>{session.status === 'running' && <span {...stylex.props(styles.running)} role="img" aria-label="Running" />}</button>
-          <button {...stylex.props(styles.delete)} aria-label={'Delete ' + (session.title || 'conversation')} disabled={session.status === 'running' || (session.id === chat.sessionId && chat.isRunning)} onClick={() => onDelete(session)}><Trash2 size={15} strokeWidth={ICON_STROKE} /></button>
-        </div></div>;
-      })}
+      {rows.length > 0 && <Virtuoso data={rows} initialItemCount={12} defaultItemHeight={50} increaseViewportBy={150} style={{ height: '100%' }} computeItemKey={(_, row) => row.kind === 'heading' ? row.group : row.session.id} components={sessionListComponents} context={chat} itemContent={(_, row) => {
+        if (row.kind === 'heading') return <h2 {...stylex.props(styles.group)}>{row.group}</h2>;
+        const session = row.session;
+        return <div {...stylex.props(styles.session, session.id === chat.sessionId && styles.selected)}>
+          <button data-session-id={session.id} {...stylex.props(styles.sessionButton)} title={session.title || 'Untitled conversation'} aria-current={session.id === chat.sessionId ? 'page' : undefined} onClick={() => onOpen(session.id)}><span {...stylex.props(styles.sessionTitle)}>{session.title || 'Untitled conversation'}</span>{session.isPinned && <Pin size={13} strokeWidth={ICON_STROKE} aria-label="Pinned" />}{session.status === 'running' && <span {...stylex.props(styles.running)} role="img" aria-label="Running" />}</button>
+          <button type="button" {...stylex.props(styles.options)} aria-label={'Options for ' + (session.title || 'conversation')} aria-haspopup="menu" onClick={event => onMenu({ id: session.id, title: session.title, anchor: event.currentTarget })}><Ellipsis size={17} strokeWidth={ICON_STROKE} aria-hidden="true" /></button>
+        </div>;
+      }} />}
       {!chat.sessions.length && <p role="status" {...stylex.props(styles.empty)}>{chat.isLoadingSessions ? 'Loading conversations…' : chat.authError ? 'Connect in Settings to see your conversations.' : chat.searchQuery ? 'No matching conversations' : 'Your conversations will appear here.'}</p>}
-      {chat.hasMore && <button {...stylex.props(ui.button, styles.more)} onClick={() => void chat.loadMore()} disabled={chat.isLoadingMore}>{chat.isLoadingMore ? 'Loading…' : 'Show more'}<ChevronRight size={16} /></button>}
     </div>
     <div {...stylex.props(styles.bottom)}><button {...stylex.props(styles.nav)} onClick={onBrowser}><BrowserIcon size={19} />Browser</button><button {...stylex.props(styles.nav)} onClick={onSettings}><Settings2 size={19} strokeWidth={ICON_STROKE} />Settings<span {...stylex.props(styles.connection, chat.isConnected && styles.connected)} role="img" aria-label={chat.isConnected ? 'Connected' : 'Disconnected'} /></button></div>
   </aside>;
 }
+
+function SessionListFooter({ context: chat }: { context?: UseChat }) {
+  return chat?.hasMore ? <button {...stylex.props(ui.button, styles.more)} onClick={() => void chat.loadMore()} disabled={chat.isLoadingMore}>{chat.isLoadingMore ? 'Loading…' : 'Show more'}<ChevronRight size={16} /></button> : undefined;
+}
+const sessionListComponents = { Footer: SessionListFooter };
 
 function dateGroup(seconds: number) {
   const date = new Date(seconds * 1000); const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -41,13 +77,13 @@ const styles = stylex.create({
   search: { display: 'flex', alignItems: 'center', gap: 9, margin: '0 22px 10px', padding: '0 2px', color: tokens.muted, minHeight: 44, flexShrink: 0 },
   searchInput: { borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, width: '100%', minWidth: 0, fontSize: '1rem', padding: '10px 0' },
   clear: { display: 'flex', alignItems: 'center', justifyContent: 'center', borderWidth: 0, color: tokens.muted, backgroundColor: 'transparent', minWidth: 32, minHeight: 44 },
-  list: { flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 14px 16px', overscrollBehavior: 'contain' },
-  group: { margin: '20px 12px 7px', fontSize: '0.75rem', color: tokens.muted, fontWeight: 500 },
+  list: { flex: 1, overflow: 'hidden', minHeight: 0, padding: '0 14px 16px', overscrollBehavior: 'contain' },
+  group: { minHeight: 50, margin: 0, padding: '20px 12px 7px', fontSize: '0.75rem', color: tokens.muted, fontWeight: 500 },
   session: { display: 'flex', alignItems: 'center', minWidth: 0, borderRadius: 12, marginBottom: 2, backgroundColor: { default: 'transparent', ':hover': tokens.hover } },
   selected: { backgroundColor: tokens.hover },
   sessionButton: { display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left', flex: 1, minWidth: 0, minHeight: 48, padding: '10px 4px 10px 12px', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, fontSize: '0.875rem' },
   sessionTitle: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  delete: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 44, flexShrink: 0, borderWidth: 0, backgroundColor: 'transparent', color: { default: tokens.muted, ':hover': tokens.danger } },
+  options: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 44, flexShrink: 0, borderWidth: 0, backgroundColor: 'transparent', color: tokens.muted },
   running: { width: 6, height: 6, borderRadius: '50%', backgroundColor: tokens.text, flexShrink: 0 },
   bottom: { borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: tokens.border, padding: '10px 14px', flexShrink: 0 },
   nav: { display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, width: '100%', borderWidth: 0, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, color: tokens.text, padding: '0 12px', borderRadius: 12, fontSize: '0.875rem', textAlign: 'left' },

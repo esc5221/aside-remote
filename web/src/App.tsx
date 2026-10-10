@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import type { VirtuosoHandle } from 'react-virtuoso';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, Check, CircleAlert, Ellipsis, SquarePen, X } from 'lucide-react';
+import { ArrowDown, Check, ChevronLeft, CircleAlert, Ellipsis, SquarePen, X } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion, usePresence, useReducedMotion } from 'motion/react';
 import { useChat } from './chat';
 import { usePushNotifications } from './notifications';
@@ -9,12 +10,11 @@ import type { ChatSession, Toast } from './types';
 import { tokens } from './tokens.stylex';
 import { Sidebar } from './Sidebar';
 import { Composer } from './Composer';
-import { QueuedMessages } from './QueuedMessages';
 import { BrowserLive } from './BrowserLive';
 import { Settings } from './Settings';
-import { SessionMenu } from './SessionMenu';
+import { RenameConversation, SessionMenu, type SessionMenuTarget } from './SessionMenu';
 import { applyTheme, THEME_STORAGE_KEY, applyTextSize, loadTextSize, TEXT_SIZE_STORAGE_KEY, type Theme } from './theme';
-import { ICON_STROKE, SESSION_MENU_LABEL, SESSION_MENU_TITLE, BrowserIcon, CloseButton, Dialog, DialogBackdropReset, IconButton, focusDialogSurface, resolveDialogReturnFocus, trapDialogFocus, styles as ui } from './ui';
+import { ICON_STROKE, SESSION_MENU_LABEL, CloseButton, Dialog, DialogBackdropReset, IconButton, focusDialogSurface, resolveDialogReturnFocus, trapDialogFocus, styles as ui } from './ui';
 
 const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })));
 const Messages = lazy(() => import('./Messages').then(module => ({ default: module.Messages })));
@@ -22,7 +22,11 @@ const ZOOM_GESTURE_EVENTS = ['gesturestart', 'gesturechange'];
 const TOAST_STACK_LIMIT = 3;
 const TOAST_DURATION = 3_000;
 const TOAST_ERROR_DURATION = 6_000;
-const TOAST_HIDDEN = { opacity: 0, y: -100, scale: .96 };
+const TOAST_HIDDEN = { opacity: 0, y: -16, scale: .96 };
+const latestMessage = { index: 'LAST', align: 'end' } as const;
+const SWIPE_AXIS_THRESHOLD = 10;
+const DRAWER_SWIPE_DISTANCE = 48;
+const HORIZONTAL_GESTURE_RATIO = 1.25;
 
 export function App() {
   const chat = useChat();
@@ -31,18 +35,23 @@ export function App() {
   const [announcement, setAnnouncement] = useState('');
   const announcedRunRef = useRef({ sessionId: chat.sessionId, isRunning: false });
   const [isDrawer, setDrawer] = useState(false);
-  const [menuSession, setMenuSession] = useState<{ id: string; title: string }>();
+  const [menuSession, setMenuSession] = useState<SessionMenuTarget>();
+  const [renameTarget, setRenameTarget] = useState<Pick<ChatSession, 'id' | 'title'>>();
   const [panel, setPanel] = useState<'settings' | 'browser' | undefined>(() => location.pathname === '/settings' ? 'settings' : location.pathname === '/tabs' ? 'browser' : undefined);
   const [browserTarget, setBrowserTarget] = useState<string>();
-  const [deleteTarget, setDeleteTarget] = useState<ChatSession>(); const [isDeleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Pick<ChatSession, 'id' | 'title'>>(); const [isDeleting, setDeleting] = useState(false);
   const [zoom, setZoom] = useState<string>();
   const [draft, setDraft] = useState(''); const [revision, setRevision] = useState(0);
+  const [isKeyboardOpen, setKeyboardOpen] = useState(false);
   const [localToasts, setLocalToasts] = useState<Toast[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null); const contentRef = useRef<HTMLDivElement>(null);
-  const shouldFollowRef = useRef(true); const [canJump, setCanJump] = useState(false);
-  const queueCountRef = useRef({ sessionId: chat.sessionId, count: 0 });
+  const listRef = useRef<VirtuosoHandle>(null);
+  const [canJump, setCanJump] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const sessionTitle = chat.sessions.find(session => session.id === chat.sessionId)?.title || (chat.sessionId ? 'Conversation' : 'New chat');
   const toasts = [...chat.toasts, ...localToasts].sort((first, second) => first.createdAt - second.createdAt);
+
+  function changeAtBottom(isAtBottom: boolean) { setCanJump(!isAtBottom); }
 
   function notify(message: string, kind: 'success' | 'error' = 'success') {
     const id = crypto.randomUUID(); setLocalToasts(current => [...current, { id, createdAt: Date.now(), message, tone: kind }]);
@@ -60,8 +69,8 @@ export function App() {
     try { localStorage.setItem(THEME_STORAGE_KEY, next); }
     catch { notify('Theme changed, but your browser could not save the preference.', 'error'); }
   }
-  function newChat() { chat.newChat(); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); shouldFollowRef.current = true; setCanJump(false); }
-  function openSession(id: string) { void chat.openSession(id); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); shouldFollowRef.current = true; }
+  function newChat() { chat.newChat(); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); changeAtBottom(true); }
+  function openSession(id: string) { void chat.openSession(id); setDraft(''); setRevision(value => value + 1); setDrawer(false); setMenuSession(undefined); changeAtBottom(true); }
   function openPanel(next: 'settings' | 'browser', targetId?: string) { setBrowserTarget(targetId); setPanel(next); setDrawer(false); history.pushState({ panel: next }, '', next === 'settings' ? '/settings' : '/tabs'); }
   function closePanel() { setPanel(undefined); setBrowserTarget(undefined); history.replaceState({}, '', chat.sessionId ? '/c/' + encodeURIComponent(chat.sessionId) : '/'); }
 
@@ -77,73 +86,172 @@ export function App() {
     return () => ZOOM_GESTURE_EVENTS.forEach(event => document.removeEventListener(event, preventZoom));
   }, []);
   useEffect(() => {
-    const onPop = () => { setPanel(location.pathname === '/settings' ? 'settings' : location.pathname === '/tabs' ? 'browser' : undefined); setDrawer(false); setMenuSession(undefined); setDraft(''); setRevision(value => value + 1); shouldFollowRef.current = true; };
+    let swipe: { id: number; x: number; y: number; horizontal: boolean } | undefined;
+    function startSwipe(event: TouchEvent) {
+      swipe = undefined;
+      const target = event.target;
+      if (event.touches.length !== 1 || !(target instanceof Element) || !matchMedia('(max-width: 820px)').matches) return;
+      if (target.closest('input, textarea, select, [contenteditable="true"], [data-selectable="true"], [aria-label="Live browser preview"], [popover]') || horizontalScroller(target)) return;
+      const dialog = target.closest('dialog');
+      if (dialog ? dialog.getAttribute('aria-label') !== 'Conversation menu' : !target.closest('main[aria-label="Chat"]')) return;
+      const touch = event.touches[0];
+      swipe = { id: touch.identifier, x: touch.clientX, y: touch.clientY, horizontal: false };
+    }
+    function moveSwipe(event: TouchEvent) {
+      if (!swipe) return;
+      if (event.touches.length !== 1) { swipe = undefined; return; }
+      const touch = [...event.touches].find(touch => touch.identifier === swipe?.id);
+      if (!touch) return;
+      const dx = Math.abs(touch.clientX - swipe.x);
+      const dy = Math.abs(touch.clientY - swipe.y);
+      if (!swipe.horizontal) {
+        if (Math.max(dx, dy) < SWIPE_AXIS_THRESHOLD) return;
+        if (dx <= dy * HORIZONTAL_GESTURE_RATIO) { swipe = undefined; return; }
+        swipe.horizontal = true;
+      }
+      if (event.cancelable) event.preventDefault();
+    }
+    function finishSwipe(event: TouchEvent) {
+      const current = swipe; swipe = undefined;
+      if (!current?.horizontal || event.type === 'touchcancel') return;
+      const touch = [...event.changedTouches].find(touch => touch.identifier === current.id);
+      if (!touch) return;
+      const dx = touch.clientX - current.x;
+      if (Math.abs(dx) < DRAWER_SWIPE_DISTANCE || document.querySelector('[popover]:popover-open')) return;
+      if (dx > 0 && !isDrawer && !document.querySelector('dialog[open]')) setDrawer(true);
+      else if (dx < 0 && isDrawer) { setMenuSession(undefined); setDrawer(false); }
+    }
+    function preventHorizontalNavigation(event: WheelEvent) {
+      if (event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY) * HORIZONTAL_GESTURE_RATIO) return;
+      const scroller = event.target instanceof Element ? horizontalScroller(event.target) : undefined;
+      if (scroller && (event.deltaX < 0 ? scroller.scrollLeft > 0 : scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1)) return;
+      if (event.cancelable) event.preventDefault();
+    }
+    function horizontalScroller(target: Element) {
+      for (let element: Element | null = target; element; element = element.parentElement) {
+        if (element.scrollWidth > element.clientWidth + 1 && /^(auto|scroll)$/.test(getComputedStyle(element).overflowX)) return element;
+      }
+    }
+    document.addEventListener('touchstart', startSwipe, { passive: true, capture: true });
+    document.addEventListener('touchmove', moveSwipe, { passive: false, capture: true });
+    document.addEventListener('touchend', finishSwipe, true);
+    document.addEventListener('touchcancel', finishSwipe, true);
+    document.addEventListener('wheel', preventHorizontalNavigation, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener('touchstart', startSwipe, true);
+      document.removeEventListener('touchmove', moveSwipe, true);
+      document.removeEventListener('touchend', finishSwipe, true);
+      document.removeEventListener('touchcancel', finishSwipe, true);
+      document.removeEventListener('wheel', preventHorizontalNavigation, true);
+    };
+  }, [isDrawer]);
+  useEffect(() => {
+    const onPop = () => { setPanel(location.pathname === '/settings' ? 'settings' : location.pathname === '/tabs' ? 'browser' : undefined); setDrawer(false); setMenuSession(undefined); setDraft(''); setRevision(value => value + 1); changeAtBottom(true); };
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  useEffect(() => {
+    if (!chat.isReady || !('serviceWorker' in navigator)) return;
+    function openNotification(event: MessageEvent<unknown>) {
+      if (typeof event.data !== 'object' || event.data === null || Reflect.get(event.data, 'type') !== 'open-conversation') return;
+      const url = Reflect.get(event.data, 'url');
+      if (typeof url !== 'string') return;
+      let target: URL;
+      try { target = new URL(url, location.origin); } catch { return; }
+      if (target.origin !== location.origin || !/^\/c\/[A-Za-z0-9]{12,32}$/.test(target.pathname)) return;
+      if (location.pathname !== target.pathname) history.pushState({}, '', target.pathname);
+      setPanel(undefined); setBrowserTarget(undefined); setDrawer(false); setMenuSession(undefined); setRenameTarget(undefined); setDeleteTarget(undefined); setZoom(undefined);
+      openSession(target.pathname.slice(3));
+      event.ports[0]?.postMessage(target.pathname);
+    }
+    navigator.serviceWorker.addEventListener('message', openNotification);
+    return () => navigator.serviceWorker.removeEventListener('message', openNotification);
+  }, [chat.isReady, chat.openSession]);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const updateHeight = () => header.parentElement?.style.setProperty('--header-height', header.getBoundingClientRect().height + 'px');
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
   }, []);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
-    const resize = () => { const root = viewportRef.current; if (root) { root.style.height = viewport.height + 'px'; root.style.top = viewport.offsetTop + 'px'; } };
+    let expandedHeight = viewport.height;
+    let viewportWidth = viewport.width;
+    const resize = () => {
+      if (viewport.width !== viewportWidth) { expandedHeight = viewport.height; viewportWidth = viewport.width; }
+      expandedHeight = Math.max(expandedHeight, viewport.height);
+      const root = viewportRef.current;
+      if (!root) return;
+      const isKeyboardVisible = document.activeElement?.id === 'draft' && matchMedia('(pointer: coarse)').matches && expandedHeight - viewport.height > 150;
+      setKeyboardOpen(isKeyboardVisible);
+      root.style.height = viewport.height + 'px';
+      root.style.top = viewport.offsetTop + 'px';
+      root.style.setProperty('--keyboard-tools-display', isKeyboardVisible ? 'flex' : 'none');
+      if (isKeyboardVisible) root.style.setProperty('--composer-bottom-padding', '6px');
+      else root.style.removeProperty('--composer-bottom-padding');
+    };
     resize(); viewport.addEventListener('resize', resize); viewport.addEventListener('scroll', resize);
-    return () => { viewport.removeEventListener('resize', resize); viewport.removeEventListener('scroll', resize); };
+    document.addEventListener('focusin', resize); document.addEventListener('focusout', resize);
+    return () => { viewport.removeEventListener('resize', resize); viewport.removeEventListener('scroll', resize); document.removeEventListener('focusin', resize); document.removeEventListener('focusout', resize); };
   }, []);
   useEffect(() => {
-    const content = contentRef.current; if (!content) return;
-    const observer = new ResizeObserver(() => {
-      const box = scrollRef.current; if (!box) return;
-      if (shouldFollowRef.current) box.scrollTop = box.scrollHeight;
-      setCanJump(box.scrollHeight - box.scrollTop - box.clientHeight > 80);
-    });
-    observer.observe(content); return () => observer.disconnect();
+    let frame = 0;
+    const returnToLatest = () => {
+      if (document.visibilityState === 'hidden') return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => listRef.current?.scrollToIndex(latestMessage));
+    };
+    document.addEventListener('visibilitychange', returnToLatest);
+    window.addEventListener('focus', returnToLatest);
+    window.addEventListener('pageshow', returnToLatest);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('visibilitychange', returnToLatest); window.removeEventListener('focus', returnToLatest); window.removeEventListener('pageshow', returnToLatest); };
   }, []);
-  useEffect(() => {
-    shouldFollowRef.current = true;
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [chat.sessionId]);
-  useEffect(() => {
-    if (chat.pendingPrompt !== undefined) {
-      shouldFollowRef.current = true;
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-    }
-  }, [chat.pendingPrompt]);
-  useEffect(() => {
-    const previous = queueCountRef.current;
-    if (previous.sessionId === chat.sessionId && chat.queuedMessages.length > previous.count) {
-      shouldFollowRef.current = true;
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-    }
-    queueCountRef.current = { sessionId: chat.sessionId, count: chat.queuedMessages.length };
-  }, [chat.sessionId, chat.queuedMessages.length]);
 
   return <MotionConfig reducedMotion="user"><div ref={viewportRef} {...stylex.props(styles.app)}><DialogBackdropReset />
-    <div {...stylex.props(styles.desktopSidebar)}><Sidebar chat={chat} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onDelete={setDeleteTarget} /></div>
+    <div {...stylex.props(styles.desktopSidebar)}><Sidebar chat={chat} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onMenu={setMenuSession} /></div>
     <main aria-label="Chat" {...stylex.props(styles.main)}>
       <div className="sr-only" role="status" aria-atomic="true">{announcement}</div>
-      <header id="header" {...stylex.props(styles.header)}><div {...stylex.props(styles.headerLeft)}><span {...stylex.props(styles.mobileMenu)}><IconButton label="Open conversations" aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE} strokeLinecap="round" aria-hidden="true"><path d="M4 8h16M4 16h10" /></svg></IconButton></span><span {...stylex.props(styles.title)}>Aside</span></div><div {...stylex.props(styles.headerActions)}><IconButton label="Open browser" aria-haspopup="dialog" onClick={() => openPanel('browser')}><BrowserIcon /></IconButton>{chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <IconButton label={SESSION_MENU_LABEL} aria-haspopup="dialog" aria-expanded={menuSession?.id === chat.sessionId} onClick={() => { const id = chat.sessionId; if (id) setMenuSession({ id, title: chat.sessions.find(session => session.id === id)?.title || 'Conversation' }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}<IconButton label="New chat" onClick={newChat}><SquarePen size={22} strokeWidth={ICON_STROKE} /></IconButton></div></header>
+      <header ref={headerRef} id="header" {...stylex.props(styles.header)}>
+        <div {...stylex.props(styles.headerLeft)}><span {...stylex.props(ui.glass, styles.mobileMenu)}><IconButton label="Open conversations" style={{ width: 40, height: 40 }} aria-haspopup="dialog" aria-expanded={isDrawer} onClick={() => setDrawer(true)}><ChevronLeft size={27} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton></span><div {...stylex.props(styles.heading)}><span title={sessionTitle} {...stylex.props(styles.title)}>{sessionTitle}</span><span {...stylex.props(styles.subtitle)}>{chat.isRunning ? 'Aside · Working…' : 'Aside'}</span></div></div>
+        <div {...stylex.props(ui.glass, styles.headerActions)}><IconButton label="New chat" style={{ height: 40 }} onClick={newChat}><SquarePen size={23} strokeWidth={ICON_STROKE} aria-hidden="true" /></IconButton>{chat.sessionId && !chat.authError && <IconButton disabled={!chat.isReady || chat.isOpening} label={SESSION_MENU_LABEL} style={{ height: 40 }} aria-haspopup="menu" aria-expanded={menuSession?.id === chat.sessionId} onClick={event => { const id = chat.sessionId; if (menuSession) setMenuSession(undefined); else if (id) setMenuSession({ id, title: sessionTitle, anchor: event.currentTarget }); }}><Ellipsis aria-hidden="true" size={23} strokeWidth={ICON_STROKE} /></IconButton>}</div>
+      </header>
       {chat.authError && <div role="alert" {...stylex.props(styles.notice)}><span>Connect to load your conversations.</span><button {...stylex.props(styles.noticeAction)} onClick={() => openPanel('settings')}>Settings</button></div>}
       {chat.isReady && !chat.isConnected && !chat.authError && <div role="status" {...stylex.props(styles.connectionNotice)}>Reconnecting… You can still send a message.</div>}
-      <div {...stylex.props(styles.scrollRegion)}><div id="chatScroll" ref={scrollRef} role="region" aria-label="Conversation" tabIndex={0} {...stylex.props(styles.scroll)} onScroll={event => { const box = event.currentTarget; const isNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80; shouldFollowRef.current = isNearBottom; setCanJump(!isNearBottom); }}><div ref={contentRef} {...stylex.props(styles.content)}>
-        {chat.isOpening || !chat.isReady ? <div role="status" {...stylex.props(styles.loading)}>Loading conversation…</div> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<div role="status" {...stylex.props(styles.loading)}>Loading conversation…</div>}><Messages key={chat.sessionId} messages={chat.messages} liveAssistant={chat.liveAssistant} pendingPrompt={chat.pendingPrompt} pendingImages={chat.pendingAttachments.map(attachment => attachment.url)} isRunning={chat.isRunning} notify={notify} onZoom={setZoom} /></Suspense> : <div {...stylex.props(styles.empty)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1></div>}
-        {chat.isReady && !chat.isOpening && chat.sessionId && <QueuedMessages key={chat.sessionId} chat={chat} />}
-      </div></div><AnimatePresence>{canJump && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => { shouldFollowRef.current = true; scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>{chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} isBrowserOpen={panel === 'browser'} onOpen={targetId => openPanel('browser', targetId)} />}</div>
-      <Composer chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} />
+      <div {...stylex.props(styles.scrollRegion)}>
+        {chat.isOpening || !chat.isReady ? <ConversationLoading /> : chat.messages.length || chat.pendingPrompt !== undefined || chat.isRunning || chat.liveAssistant?.text ? <Suspense fallback={<ConversationLoading />}><Messages key={chat.sessionId} chat={chat} listRef={listRef} onAtBottomChange={changeAtBottom} notify={notify} onZoom={setZoom} /></Suspense> : <div {...stylex.props(styles.empty)}><h1 {...stylex.props(styles.emptyTitle)}>What’s on your mind?</h1></div>}
+        <AnimatePresence>{canJump && !chat.isOpening && <motion.button key="jump" aria-label="Scroll to latest message" {...stylex.props(styles.jump, ui.glass)} initial={{ opacity: 0, scale: .86, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, y: 6 }} transition={{ duration: .16 }} whileTap={{ scale: .9 }} onClick={() => listRef.current?.scrollToIndex(latestMessage)}><ArrowDown size={19} strokeWidth={ICON_STROKE} /></motion.button>}</AnimatePresence>
+        {chat.sessionId && chat.isReady && !chat.isOpening && !chat.authError && <BrowserLive key={chat.sessionId} sessionId={chat.sessionId} request={chat.request} isVisible={!panel && !isDrawer && !menuSession && !deleteTarget && !zoom} onOpen={targetId => openPanel('browser', targetId)} />}
+      </div>
+      <Composer chat={chat} onBrowser={() => openPanel('browser')} draft={draft} setDraft={setDraft} revision={revision} notify={notify} textSize={textSize} isKeyboardOpen={isKeyboardOpen} />
     </main>
-    <AnimatePresence>{isDrawer && <Drawer key="drawer" onClose={() => setDrawer(false)}><Sidebar chat={chat} isDrawer onClose={() => setDrawer(false)} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onDelete={session => { setDrawer(false); setDeleteTarget(session); }} /></Drawer>}</AnimatePresence>
+    <AnimatePresence>{isDrawer && <Drawer key="drawer" onClose={() => { setMenuSession(undefined); setDrawer(false); }}><Sidebar chat={chat} isDrawer onClose={() => { setMenuSession(undefined); setDrawer(false); }} onNew={newChat} onOpen={openSession} onSettings={() => openPanel('settings')} onBrowser={() => openPanel('browser')} onMenu={setMenuSession} /></Drawer>}</AnimatePresence>
     <AnimatePresence mode="wait">{panel && <Dialog key={panel === 'browser' ? `browser:${browserTarget ?? "all"}` : panel} title={panel === 'browser' ? 'Browser' : 'Settings'} isWide={panel === 'browser'} onClose={closePanel}>{panel === 'settings' ? <Settings chat={chat} notifications={notifications} notify={notify} onClose={closePanel} isDarkMode={theme === 'dark'} onThemeToggle={toggleTheme} textSize={textSize} onTextSizeChange={changeTextSize} /> : <Suspense fallback={<p role="status" {...stylex.props(ui.muted)}>Loading browser…</p>}><BrowserPanel initialTargetId={browserTarget} sessionId={browserTarget ? chat.sessionId : undefined} request={chat.request} notify={notify} onClose={closePanel} onStart={prompt => { closePanel(); if (!browserTarget) newChat(); setDraft(prompt); }} /></Suspense>}</Dialog>}</AnimatePresence>
-    <AnimatePresence>{menuSession && menuSession.id === chat.sessionId && !chat.isOpening && !chat.authError && <Dialog key={menuSession.id} title={SESSION_MENU_TITLE} onClose={() => setMenuSession(undefined)}><SessionMenu sessionId={menuSession.id} title={menuSession.title} onClose={() => setMenuSession(undefined)} notify={notify} /></Dialog>}</AnimatePresence>
+    {menuSession && !chat.authError && <SessionMenu key={menuSession.id} target={menuSession} chat={chat} onClose={() => setMenuSession(undefined)} notify={notify} onRename={setRenameTarget} onDelete={session => { setDrawer(false); setDeleteTarget(session); }} />}
+    <AnimatePresence>{renameTarget && <Dialog key={renameTarget.id} title="Rename conversation" onClose={() => setRenameTarget(undefined)}><RenameConversation session={renameTarget} chat={chat} onClose={() => setRenameTarget(undefined)} /></Dialog>}</AnimatePresence>
     <AnimatePresence>{deleteTarget && <Dialog key={deleteTarget.id} title="Delete conversation?" onClose={() => { if (!isDeleting) setDeleteTarget(undefined); }}><div {...stylex.props(styles.dialogHeader)}><h2 {...stylex.props(ui.title)}>Delete conversation?</h2><CloseButton onClick={() => { if (!isDeleting) setDeleteTarget(undefined); }} /></div><p {...stylex.props(styles.deleteTitle)}>{deleteTarget.title}</p><p {...stylex.props(ui.muted)}>This also deletes the original conversation and its files in Aside. This cannot be undone.</p><div {...stylex.props(styles.dialogActions)}><button {...stylex.props(ui.button)} disabled={isDeleting} autoFocus onClick={() => setDeleteTarget(undefined)}>Cancel</button><button {...stylex.props(ui.button, ui.danger)} disabled={isDeleting} onClick={async () => { setDeleting(true); try { if (await chat.deleteSession(deleteTarget.id)) setDeleteTarget(undefined); } finally { setDeleting(false); } }}>{isDeleting ? 'Deleting…' : 'Delete'}</button></div></Dialog>}</AnimatePresence>
     <AnimatePresence>{zoom && <Dialog key={zoom} title="Image" isWide onClose={() => setZoom(undefined)}><div {...stylex.props(styles.zoomHeader)}><CloseButton onClick={() => setZoom(undefined)} /></div><img src={zoom} alt="Expanded attachment" {...stylex.props(styles.zoomImage)} /></Dialog>}</AnimatePresence>
     <ToastStack toasts={toasts} onDismiss={dismissToast} />
   </div></MotionConfig>;
 }
 
+function ConversationLoading() {
+  const shouldReduceMotion = useReducedMotion();
+  return <div role="region" aria-label="Conversation" aria-busy="true" {...stylex.props(styles.conversationLoading)}>
+    <span className="sr-only" role="status">Loading messages…</span>
+    <motion.div aria-hidden="true" {...stylex.props(styles.messageSkeleton)} animate={shouldReduceMotion ? undefined : { opacity: [.45, .8, .45] }} transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}>
+      {[88, 72, 48].map(width => <div key={width} style={{ width: `${width}%` }} {...stylex.props(styles.skeletonLine)} />)}
+    </motion.div>
+  </div>;
+}
+
 function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const shouldReduceMotion = useReducedMotion();
   const visibleToasts = toasts.slice(-TOAST_STACK_LIMIT);
   const [portalTarget, setPortalTarget] = useState<HTMLElement>(() => document.body);
-  const countRef = useRef(toasts.length); countRef.current = toasts.length;
   useLayoutEffect(() => {
     const updateTarget = () => setPortalTarget([...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].at(-1) ?? document.body);
     updateTarget();
@@ -151,11 +259,6 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: st
     observer.observe(document.body, { attributes: true, attributeFilter: ['open'], subtree: true });
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
-    const stack = ref.current;
-    if (!stack || !('showPopover' in stack)) return;
-    if (toasts.length && !stack.matches(':popover-open')) stack.showPopover();
-  }, [toasts, portalTarget]);
   const dismissNotification = useCallback((id: string) => {
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && activeElement.closest('[data-toast-id]')?.getAttribute('data-toast-id') === id) {
@@ -174,7 +277,7 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: st
     });
     return () => timers.forEach(window.clearTimeout);
   }, [toasts, dismissNotification]);
-  return createPortal(<div ref={ref} popover="manual" onFocusCapture={event => { if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget instanceof HTMLElement) returnFocusRef.current = event.relatedTarget; }} {...stylex.props(styles.toasts)}><AnimatePresence initial={false} onExitComplete={() => { const stack = ref.current; if (stack && countRef.current === 0 && stack.matches(':popover-open')) stack.hidePopover(); }}>{visibleToasts.map((toast, index) => {
+  return createPortal(<div data-toast-stack="" onFocusCapture={event => { if (!event.currentTarget.contains(event.relatedTarget) && event.relatedTarget instanceof HTMLElement) returnFocusRef.current = event.relatedTarget; }} {...stylex.props(styles.toasts)}><AnimatePresence initial={false}>{visibleToasts.map((toast, index) => {
     const depth = visibleToasts.length - index - 1;
     return <motion.div key={toast.id} data-toast-id={toast.id} {...stylex.props(styles.toast)} style={{ zIndex: index + 1 }} initial={shouldReduceMotion ? { opacity: 0 } : TOAST_HIDDEN} animate={{ opacity: 1, y: depth * 8, scale: 1 - depth * .04 }} exit={shouldReduceMotion ? { opacity: 0 } : TOAST_HIDDEN} transition={{ type: 'tween', duration: shouldReduceMotion ? .12 : .28, ease: [0.22, 1, 0.36, 1] }}><span aria-hidden="true" {...stylex.props(styles.toastIcon)}>{toast.tone === 'error' ? <CircleAlert size={18} strokeWidth={ICON_STROKE} /> : <Check size={18} strokeWidth={ICON_STROKE} />}</span><span role={toast.tone === 'error' ? 'alert' : 'status'} {...stylex.props(styles.toastMessage)}>{toast.message}</span><motion.button type="button" {...stylex.props(styles.toastClose)} style={{ pointerEvents: depth ? 'none' : 'auto' }} tabIndex={depth ? -1 : 0} whileTap={{ scale: .86 }} aria-label="Dismiss notification" onClick={() => dismissNotification(toast.id)}><X size={16} /></motion.button></motion.div>;
   })}</AnimatePresence></div>, portalTarget);
@@ -200,22 +303,24 @@ function Drawer({ children, onClose }: { children: React.ReactNode; onClose: () 
 const styles = stylex.create({
   app: { display: 'flex', width: '100%', height: '100dvh', overflow: 'hidden', position: 'fixed', top: 0, left: 0, color: tokens.text, backgroundColor: tokens.canvas },
   desktopSidebar: { width: 288, flexShrink: 0, height: '100%', borderRightWidth: 1, borderRightStyle: 'solid', borderRightColor: tokens.border, '@media (max-width: 820px)': { display: 'none' } },
-  main: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0, flex: 1 },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, minHeight: 64, padding: 'calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left))', backgroundColor: tokens.canvas, zIndex: 1 },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 },
-  headerActions: { display: 'flex', alignItems: 'center', gap: 4 },
-  mobileMenu: { display: 'none', '@media (max-width: 820px)': { display: 'inline-flex' } },
-  title: { fontSize: '1.1875rem', fontWeight: 650, letterSpacing: '-.35px', marginLeft: 4 },
+  main: { display: 'flex', flexDirection: 'column', position: 'relative', height: '100%', minHeight: 0, minWidth: 0, flex: 1 },
+  header: { position: 'absolute', top: 0, left: 0, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 68, padding: 'calc(12px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left))', backgroundImage: 'linear-gradient(to bottom, var(--canvas), color-mix(in srgb, var(--canvas) 80%, transparent) 60%, transparent)', backdropFilter: 'blur(10px)', zIndex: 3, pointerEvents: 'none' },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 },
+  heading: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
+  headerActions: { display: 'flex', alignItems: 'center', gap: 4, padding: '0 3px', borderRadius: 28, flexShrink: 0, pointerEvents: 'auto' },
+  mobileMenu: { display: 'none', borderRadius: '50%', pointerEvents: 'auto', '@media (max-width: 820px)': { display: 'inline-flex' } },
+  title: { fontSize: '.9375rem', lineHeight: 1.25, fontWeight: 650, letterSpacing: '-.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  subtitle: { color: tokens.muted, fontSize: '.75rem', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   scrollRegion: { position: 'relative', flex: 1, minHeight: 0, minWidth: 0 },
-  scroll: { height: '100%', overflowY: 'auto', overflowX: 'hidden', minWidth: 0, overscrollBehaviorY: 'contain', scrollbarWidth: 'thin', padding: '0 max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left))' },
-  content: { width: '100%', minWidth: 0, maxWidth: 736, margin: '0 auto', minHeight: '100%', display: 'flex', flexDirection: 'column' },
-  empty: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 70, textAlign: 'center' },
+  empty: { display: 'flex', height: '100%', flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 'calc(var(--composer-height) + 70px)', textAlign: 'center' },
   emptyTitle: { fontSize: '1.6875rem', lineHeight: 1.3, letterSpacing: '-.7px', fontWeight: 600, margin: 0, '@media (max-width: 375px)': { fontSize: '1.5rem' } },
-  loading: { display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, fontSize: '0.875rem', color: tokens.muted },
-  jump: { position: 'absolute', right: 'max(24px, env(safe-area-inset-right))', bottom: 14, width: 40, height: 40, borderRadius: '50%', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, backgroundColor: tokens.canvas, color: tokens.text, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgb(0 0 0 / .06)' },
-  notice: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 8px', padding: '10px 14px', borderRadius: 14, backgroundColor: tokens.surface, fontSize: '0.8125rem', lineHeight: 1.5, flexShrink: 0 },
+  conversationLoading: { display: 'flex', height: '100%', alignItems: 'flex-end', padding: '20px max(20px, env(safe-area-inset-right)) calc(var(--composer-height) + 28px) max(20px, env(safe-area-inset-left))', minWidth: 0 },
+  messageSkeleton: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 736, margin: '0 auto' },
+  skeletonLine: { height: 12, borderRadius: 6, backgroundColor: tokens.bubble },
+  jump: { position: 'absolute', left: '50%', marginLeft: -20, bottom: 'calc(var(--composer-height) + 10px)', width: 40, height: 40, borderRadius: '50%', borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, backgroundColor: tokens.canvas, color: tokens.text, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgb(0 0 0 / .06)' },
+  notice: { display: 'flex', position: 'absolute', top: 'var(--header-height)', right: 16, left: 16, zIndex: 3, alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: 0, padding: '10px 14px', borderRadius: 14, backgroundColor: tokens.surface, fontSize: '0.8125rem', lineHeight: 1.5, flexShrink: 0 },
   noticeAction: { backgroundColor: 'transparent', color: tokens.text, borderWidth: 0, minHeight: 32, fontSize: '0.8125rem', textDecoration: 'underline' },
-  connectionNotice: { fontSize: '0.75rem', lineHeight: 1.5, textAlign: 'center', color: tokens.muted, padding: '0 16px 8px', flexShrink: 0 },
+  connectionNotice: { position: 'absolute', top: 'var(--header-height)', left: 0, right: 0, zIndex: 3, backgroundColor: tokens.canvas, fontSize: '0.75rem', lineHeight: 1.5, textAlign: 'center', color: tokens.muted, padding: '0 16px 8px', flexShrink: 0 },
   drawer: { position: 'fixed', inset: 0, padding: 0, margin: 0, borderWidth: 0, backgroundColor: 'transparent', width: '100%', height: '100dvh', maxWidth: '100%', maxHeight: '100%', overflow: 'hidden' },
   drawerBackdrop: { position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, borderWidth: 0, backgroundColor: 'rgb(0 0 0 / .28)' },
   drawerContent: { position: 'relative', zIndex: 1, width: 'min(320px, 87vw)', height: '100%', boxShadow: '8px 0 32px rgb(0 0 0 / .08)' },

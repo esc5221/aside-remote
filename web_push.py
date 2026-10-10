@@ -144,7 +144,7 @@ class WebPushStore:
         return any(key[0] == subscription_id and value[1] > now and value[2]
                    for key, value in self._presence.items())
 
-    async def complete(self, session_id: str, run_id: str, *, text: str, has_error: bool) -> None:
+    async def complete(self, session_id: str, run_id: str, *, text: str, title: str, has_error: bool) -> None:
         body = re.sub(r"</?citation\b[^>]*>", "", text, flags=re.IGNORECASE).strip()
         if has_error:
             body = "Your response could not finish. Tap to open the conversation."
@@ -157,7 +157,7 @@ class WebPushStore:
                     return
                 origin = record["origin"]
                 notification = {
-                    "title": "Aside",
+                    "title": title,
                     "body": body,
                     "navigate": f"{origin}/c/{session_id}",
                     "tag": f"aside:{run_id}",

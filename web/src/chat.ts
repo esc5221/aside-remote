@@ -12,12 +12,14 @@ import {
   parseDeletedSession,
   parseAbortedRun,
   parseRunStatus,
+  parseSessionDetails,
 } from "./responses"
 
 import type {
   ChatMessage,
   ChatSession,
   LiveAssistant,
+  ModelConfig,
   QueuedMessage,
   Toast,
   UploadAttachment,
@@ -36,6 +38,8 @@ const FOLLOWUP_REQUEST_TIMEOUT_MS = 60_000
 const RUN_REQUEST_RECOVERY_INTERVAL_MS = 750
 const RUN_REQUEST_RECOVERY_MAX_ATTEMPTS = 48
 const MAX_STALE_STREAM_KEYS = 128
+
+const getRouteSessionId = () => location.pathname.match(/^\/c\/([A-Za-z0-9_-]{1,64})\/?$/)?.[1]
 
 type PendingRequest = {
   prompt: string
@@ -88,7 +92,7 @@ const getStreamKey = (sessionId: string, streamId: string) => `${sessionId}:${st
 const getRunKey = (sessionId: string, runId: string) => `${sessionId}:${runId}`
 
 const compareSessions = (left: ChatSession, right: ChatSession) => {
-  return right.mtime - left.mtime || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+  return Number(right.isPinned) - Number(left.isPinned) || right.mtime - left.mtime || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 }
 
 const getAssistantText = (message: ChatMessage) => {
@@ -195,7 +199,7 @@ export const useChat = (): UseChat => {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [authError, setAuthError] = useState<string>()
-  const [sessionId, setSessionId] = useState<string>()
+  const [sessionId, setSessionId] = useState<string | undefined>(getRouteSessionId)
   const [pendingPrompt, setPendingPrompt] = useState<string>()
   const [pendingAttachments, setPendingAttachments] = useState<UploadAttachment[]>([])
   const [recoveredDraft, setRecoveredDraft] = useState<string>()
@@ -419,8 +423,9 @@ export const useChat = (): UseChat => {
                 ? current.filter((item) => compareSessions(item, firstPageTail) > 0)
                 : []
           const byId = new Map(previous.map((item) => [item.id, item]))
+          const existingById = new Map(current.map((item) => [item.id, item]))
           result.items.forEach((item) => {
-            const existing = current.find((session) => session.id === item.id)
+            const existing = existingById.get(item.id)
             byId.set(item.id, existing && existing.mtime > item.mtime
               ? { ...item, mtime: existing.mtime, updatedAt: existing.updatedAt }
               : item)
@@ -522,20 +527,22 @@ export const useChat = (): UseChat => {
     [cancelPendingRequests, fetchMessages, pushToast, releaseQueueEdit, retireLiveAssistant, sendSocket],
   )
 
-  const restoreSavedSession = useCallback(async () => {
-    const routeMatch = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{1,64})\/?$/)
-    const routeSessionId = routeMatch ? decodeURIComponent(routeMatch[1]) : undefined
+  const restoreSavedSession = useCallback(async (sessionPage?: Promise<void>) => {
+    const routeSessionId = getRouteSessionId()
     const mode = localStorage.getItem(LAST_SESSION_MODE_KEY)
     const savedSessionId = localStorage.getItem(LAST_SESSION_KEY)
     const lastSessionId = routeSessionId ?? (mode === "new" ? undefined : savedSessionId)
     if (lastSessionId) {
       const restored = await openSession(lastSessionId, Boolean(routeSessionId))
-      if (!restored && !routeSessionId && sessionsRef.current[0]) {
-        await openSession(sessionsRef.current[0].id, false)
+      if (!restored && !routeSessionId) {
+        await sessionPage
+        if (sessionsRef.current[0]) await openSession(sessionsRef.current[0].id, false)
       }
       return
     }
-    if (mode !== "new" && sessionsRef.current[0]) {
+    if (mode === "new") return
+    await sessionPage
+    if (sessionsRef.current[0]) {
       await openSession(sessionsRef.current[0].id, false)
     }
   }, [openSession])
@@ -926,7 +933,7 @@ export const useChat = (): UseChat => {
   }, [fetchMessages, handleSocketMessage, recoverPendingRequest, subscribe])
 
   const send = useCallback(
-    async (prompt: string, attachments: UploadAttachment[] = []) => {
+    async (prompt: string, attachments: UploadAttachment[] = [], model?: ModelConfig) => {
       const text = prompt.trim()
       if (!text && attachments.length === 0) return false
       const selectedSessionId = sessionIdRef.current
@@ -935,6 +942,9 @@ export const useChat = (): UseChat => {
       const requestId = createRequestId()
       activeSendRef.current = requestId
       const payloadAttachments = attachments.map(({ id, name }) => ({ id, name }))
+      const modelOptions = !selectedSessionId && model ? {
+        model: `${model.provider}/${model.modelId}`, effort: model.thinkingLevel, speed: model.fastMode ? "fast" : "default",
+      } : {}
       const socket = socketRef.current
       setPendingPrompt(prompt)
       pendingPromptRef.current = prompt
@@ -960,7 +970,7 @@ export const useChat = (): UseChat => {
                     prompt: text,
                     attachments: payloadAttachments,
                   }
-                : { op: "run", requestId, prompt: text, attachments: payloadAttachments },
+                : { op: "run", requestId, prompt: text, attachments: payloadAttachments, ...modelOptions },
             ),
           )
         })
@@ -971,7 +981,7 @@ export const useChat = (): UseChat => {
           : "/api/runs"
         const result = await api(path, parseStartedRun, {
           method: "POST",
-          body: JSON.stringify({ prompt: text, attachments: payloadAttachments }),
+          body: JSON.stringify({ prompt: text, attachments: payloadAttachments, ...modelOptions }),
         })
         if (
           activeSendRef.current !== requestId ||
@@ -1174,6 +1184,20 @@ export const useChat = (): UseChat => {
     [api, newChat, pushToast, refreshSessions, updateSessions],
   )
 
+  const updateSession = useCallback(async (id: string, settings: { title?: string; isPinned?: boolean }) => {
+    try {
+      const details = await api(`/api/sessions/${encodeURIComponent(id)}`, parseSessionDetails, {
+        method: "PATCH", body: JSON.stringify(settings),
+      })
+      updateSessions(current => current.map(session => session.id === id ? { ...session, ...details } : session).sort(compareSessions))
+      void refreshSessions()
+      return true
+    } catch (error) {
+      pushToast(`Couldn't update the conversation. ${getErrorMessage(error)}`)
+      return false
+    }
+  }, [api, pushToast, refreshSessions, updateSessions])
+
   const abort = useCallback(async () => {
     const selectedSessionId = sessionIdRef.current
     if (!selectedSessionId) return false
@@ -1278,8 +1302,7 @@ export const useChat = (): UseChat => {
         setIsReady(true)
         return
       }
-      await loadSessionPage("reset")
-      await restoreSavedSession()
+      await restoreSavedSession(loadSessionPage("reset"))
       connectSocket()
       if (!isUnmountedRef.current) setIsReady(true)
     }
@@ -1305,9 +1328,9 @@ export const useChat = (): UseChat => {
 
   useEffect(() => {
     const handlePopState = () => {
-      const match = location.pathname.match(/^\/c\/([A-Za-z0-9_-]{1,64})\/?$/)
-      if (match) {
-        void openSession(decodeURIComponent(match[1]))
+      const routeSessionId = getRouteSessionId()
+      if (routeSessionId) {
+        void openSession(routeSessionId)
         return
       }
       if (location.pathname !== "/") return
@@ -1437,6 +1460,7 @@ export const useChat = (): UseChat => {
     resumeQueue,
     upload,
     deleteSession,
+    updateSession,
     abort,
     clearRecoveredDraft,
     dismissToast,
