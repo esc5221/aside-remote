@@ -1,7 +1,12 @@
 # aside-remote
 
-Use [Aside](https://aside.dev) (the agent browser) **from your phone, or any browser** —
+Use [Aside](https://aside.com) (the agent browser) **from your phone, or any browser** —
 a small local bridge that turns your desktop Aside into a chat web app.
+
+<p align="center">
+  <img src="docs/screenshot-mobile.png" height="360" alt="aside-remote on a phone">
+  <img src="docs/screenshot-desktop.png" height="360" alt="aside-remote in a desktop browser">
+</p>
 
 ```
 phone / laptop ──HTTPS/WSS──> (your tunnel + auth) ──> 127.0.0.1:8799  aside-remote
@@ -48,7 +53,7 @@ The app follows a ChatGPT iOS-inspired conversation layout with an anchored comp
 
 ## Requirements
 
-- macOS with the [Aside](https://aside.dev) app installed and signed in
+- macOS with the [Aside](https://aside.com) app installed and signed in
   (the bridge drives Aside's own CLI — it has no AI keys of its own)
 - Python ≥ 3.10
 - Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ and npm for building the frontend
