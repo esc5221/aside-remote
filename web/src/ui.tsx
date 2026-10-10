@@ -1,8 +1,8 @@
 import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { X } from 'lucide-react';
-import { motion, useDragControls, usePresence, useReducedMotion, type HTMLMotionProps, type PanInfo } from 'motion/react';
+import { motion, usePresence, useReducedMotion, type HTMLMotionProps } from 'motion/react';
 import { tokens } from './tokens.stylex';
 
 export const ICON_STROKE = 1.8;
@@ -22,13 +22,75 @@ export function BrowserIcon({ size = 22 }: { size?: number }) {
 
 export function Dialog({ title, children, onClose, isWide = false, isFullScreen = false }: { title: string; children: ReactNode; onClose: () => void; isWide?: boolean; isFullScreen?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeRequestedRef = useRef(false);
   const isOpenRef = useRef(false);
-  const dragControls = useDragControls();
+  const hasDraggedRef = useRef(false);
   const [isPresent, safeToRemove] = usePresence();
   const shouldReduceMotion = useReducedMotion();
   const isMobile = useMediaQuery('(max-width: 700px)');
+  const closeFromSwipe = useEffectEvent(requestClose);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || !isMobile || isFullScreen) return;
+    let dragOffset = 0;
+    let gesture: { id: number; x: number; y: number; lastY: number; time: number; velocity: number; isDragging: boolean } | undefined;
+    function restore() {
+      gesture = undefined;
+      if (isOpenRef.current && surface) {
+        dragOffset = 0;
+        surface.style.removeProperty('translate');
+      }
+    }
+    function start(event: TouchEvent) {
+      if (event.touches.length !== 1) { if (gesture) restore(); return; }
+      gesture = undefined;
+      hasDraggedRef.current = false;
+      const target = event.target;
+      if (!surface || !isOpenRef.current || !(target instanceof Element) || target.closest('dialog') !== ref.current || target.closest('input, textarea, select, [contenteditable="true"], iframe, [data-selectable="true"]')) return;
+      for (let element: Element | null = target; element && element !== surface; element = element.parentElement) {
+        if (element.scrollTop > 0 && /^(auto|scroll)$/.test(getComputedStyle(element).overflowY)) return;
+      }
+      dragOffset = 0;
+      surface.style.removeProperty('translate');
+      const touch = event.touches[0];
+      gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, lastY: touch.clientY, time: performance.now(), velocity: 0, isDragging: false };
+    }
+    function move(event: TouchEvent) {
+      if (!gesture) return;
+      const touch = [...event.touches].find(touch => touch.identifier === gesture?.id);
+      if (!touch) { restore(); return; }
+      const dy = touch.clientY - gesture.y;
+      if (!gesture.isDragging) {
+        if (dy > Math.abs(touch.clientX - gesture.x) && event.cancelable) event.preventDefault();
+        if (Math.max(Math.abs(touch.clientX - gesture.x), Math.abs(dy)) < 8) return;
+        if (dy <= Math.abs(touch.clientX - gesture.x) || !event.cancelable) { gesture = undefined; return; }
+        gesture.isDragging = true;
+        hasDraggedRef.current = true;
+      }
+      event.preventDefault();
+      const now = performance.now();
+      gesture.velocity = (touch.clientY - gesture.lastY) / Math.max(1, now - gesture.time) * 1000;
+      gesture.lastY = touch.clientY; gesture.time = now;
+      dragOffset = Math.max(0, dy);
+      if (surface) surface.style.translate = `0 ${dragOffset}px`;
+    }
+    function finish() {
+      if (!gesture) return;
+      const shouldClose = gesture.isDragging && (dragOffset > 96 || performance.now() - gesture.time < 80 && gesture.velocity > 700);
+      if (shouldClose) { gesture = undefined; closeFromSwipe(); }
+      else restore();
+    }
+    surface.addEventListener('touchstart', start, { passive: true });
+    surface.addEventListener('touchmove', move, { passive: false });
+    surface.addEventListener('touchend', finish);
+    surface.addEventListener('touchcancel', restore);
+    return () => {
+      surface.removeEventListener('touchstart', start); surface.removeEventListener('touchmove', move); surface.removeEventListener('touchend', finish); surface.removeEventListener('touchcancel', restore);
+      surface.style.removeProperty('translate');
+    };
+  }, [isMobile, isFullScreen]);
   useLayoutEffect(() => {
     isOpenRef.current = false;
     if (isPresent) closeRequestedRef.current = false;
@@ -59,9 +121,6 @@ export function Dialog({ title, children, onClose, isWide = false, isFullScreen 
     closeRequestedRef.current = true;
     onClose();
   }
-  function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
-    if (info.offset.y > 96 || info.velocity.y > 700) requestClose();
-  }
   const sheetMotion = shouldReduceMotion || isFullScreen
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: .12 } }
     : isMobile
@@ -69,8 +128,8 @@ export function Dialog({ title, children, onClose, isWide = false, isFullScreen 
       : { initial: { opacity: 0, scale: .96, y: 10 }, animate: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: .97, y: 8 }, transition: { duration: .2, ease: DIALOG_EASE } };
   return <motion.dialog ref={ref} tabIndex={-1} data-motion-overlay="" style={{ pointerEvents: isPresent ? 'auto' : 'none' }} {...stylex.props(styles.dialog)} aria-label={title} onKeyDown={event => { trapDialogFocus(event); event.stopPropagation(); }} onCancel={event => { event.preventDefault(); event.stopPropagation(); requestClose(); }}>
     <motion.button type="button" tabIndex={-1} data-overlay-backdrop="" aria-label={`Close ${title}`} {...stylex.props(styles.backdrop)} initial={{ opacity: 0 }} animate={{ opacity: isPresent ? 1 : 0 }} transition={{ duration: shouldReduceMotion ? .1 : .2 }} onClick={requestClose} />
-    <motion.div data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide, isFullScreen && styles.fullSurface)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} drag={!isFullScreen && !shouldReduceMotion && isMobile ? 'y' : false} dragControls={dragControls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: .5 }} dragMomentum={false} onDragEnd={finishDrag}>
-      {!isFullScreen && <div {...stylex.props(styles.dragHandle)} aria-hidden="true" onPointerDown={event => { if (isOpenRef.current) dragControls.start(event); }}><span {...stylex.props(styles.dragHandleBar)} /></div>}
+    <motion.div ref={surfaceRef} data-dialog-surface="" {...stylex.props(styles.dialogSurface, isWide && styles.wide, isFullScreen && styles.fullSurface)} initial={sheetMotion.initial} animate={isPresent ? sheetMotion.animate : sheetMotion.exit} transition={sheetMotion.transition} onAnimationComplete={() => { isOpenRef.current = isPresent; if (!isPresent) safeToRemove?.(); }} onClickCapture={event => { if (hasDraggedRef.current) { event.preventDefault(); event.stopPropagation(); hasDraggedRef.current = false; } }}>
+      {!isFullScreen && <div {...stylex.props(styles.dragHandle)} aria-hidden="true"><span {...stylex.props(styles.dragHandleBar)} /></div>}
       <div {...stylex.props(styles.dialogBody, isFullScreen && styles.fullBody)}>{children}</div>
     </motion.div>
   </motion.dialog>;
