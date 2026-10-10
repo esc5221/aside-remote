@@ -156,7 +156,7 @@ export function BrowserLive({ sessionId, request, onOpen, isVisible, isBrowserOp
 const styles = stylex.create({
   bounds: { position: 'absolute', top: 'calc(var(--header-height) + 12px)', left: 'max(16px, env(safe-area-inset-left))', right: 'max(16px, env(safe-area-inset-right))', bottom: 'calc(var(--composer-height) + 62px)', pointerEvents: 'none', zIndex: 2 },
   preview: { position: 'absolute', right: 0, bottom: 0, width: 'min(220px, 100%)', maxHeight: '100%', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: 16, borderWidth: 1, borderStyle: 'solid', borderColor: tokens.border, backgroundColor: tokens.canvas, color: tokens.text, overflow: 'hidden', pointerEvents: 'auto', touchAction: 'none', boxShadow: '0 6px 28px rgb(0 0 0 / .15)', textAlign: 'left', userSelect: 'none' },
-  top: { display: 'flex', alignItems: 'center', minWidth: 0, minHeight: 40, flexShrink: 0, padding: '0 4px 0 0', backgroundColor: tokens.canvas },
+  top: { display: 'flex', alignItems: 'center', minWidth: 0, minHeight: 40, flexShrink: 0, padding: '2px 6px 2px 10px', backgroundColor: tokens.canvas },
   handle: { display: 'flex', flex: 1, alignItems: 'center', alignSelf: 'stretch', minWidth: 0, padding: '0 6px 0 0', borderWidth: 0, backgroundColor: 'transparent', color: tokens.text, touchAction: 'none', cursor: { default: 'grab', ':active': 'grabbing' } },
   control: { display: 'grid', placeItems: 'center', width: 32, height: 36, flexShrink: 0, padding: 0, borderWidth: 0, borderRadius: 10, color: tokens.text, backgroundColor: { default: 'transparent', ':hover': tokens.hover }, textDecoration: 'none' },
   title: { flex: 1, minWidth: 0, fontSize: '0.625rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 },
